@@ -6,23 +6,35 @@ from TPGMM_GMR import TPGMM_GMR
 from copy import deepcopy
 
 # Initialization of parameters and properties------------------------------------------------------------------------- #
-nbSamples = 4
-nbVar = 3
-nbFrames = 2
-nbStates = 3
-nbData = 200
+nbSamples = 3  # nb of demonstrations
+nbVar = 4      # Dim !!
+nbFrames = 2 
+nbStates = 3   # nb of Gaussians
+nbData = 851
 
 # Preparing the samples----------------------------------------------------------------------------------------------- #
 slist = []
 for i in range(nbSamples):
     pmat = np.empty(shape=(nbFrames, nbData), dtype=object)
-    tempData = np.loadtxt('sample' + str(i + 1) + '_Data.txt', delimiter=',')
+    # tempData = np.loadtxt('sample' + str(i + 1) + '_Data.txt', delimiter=',')
+    tempData = np.loadtxt('Demon' + str(i+1) + '_sample' + '_Data.txt', delimiter=',')
     for j in range(nbFrames):
-        tempA = np.loadtxt('sample' + str(i + 1) + '_frame' + str(j + 1) + '_A.txt', delimiter=',')
-        tempB = np.loadtxt('sample' + str(i + 1) + '_frame' + str(j + 1) + '_b.txt', delimiter=',')
+        # tempA = np.loadtxt('sample' + str(i + 1) + '_frame' + str(j + 1) + '_A.txt', delimiter=',')
+        # tempB = np.loadtxt('sample' + str(i + 1) + '_frame' + str(j + 1) + '_b.txt', delimiter=',')
+        tempA = np.loadtxt('Demon' + str(i+1) + '_sample' + '_frame' + str(j + 1) + '_A.txt', delimiter=',')
+        tempB = np.loadtxt('Demon' + str(i+1) + '_sample' + '_frame' + str(j + 1) + '_b.txt', delimiter=',')
+
+        tempData = tempData[:,:nbData]
+        tempA = tempA[:,:nbData*4]
+        tempB = tempB[:,:nbData]
+        print(tempA.shape)
+        print(tempB.shape)
+
         for k in range(nbData):
-            pmat[j, k] = p(tempA[:, 3*k : 3*k + 3], tempB[:, k].reshape(len(tempB[:, k]), 1),
-                           np.linalg.inv(tempA[:, 3*k : 3*k + 3]), nbStates)
+            # pmat[j, k] = p(tempA[:, 3*k : 3*k + 3], tempB[:, k].reshape(len(tempB[:, k]), 1),
+            #                np.linalg.inv(tempA[:, 3*k : 3*k + 3]), nbStates)
+            pmat[j, k] = p(tempA[:, 4*k : 4*k + 4], tempB[:, k].reshape(len(tempB[:, k]), 1),
+                           np.linalg.pinv(tempA[:, 4*k : 4*k + 4]), nbStates)                         
     slist.append(s(pmat, tempData, tempData.shape[1], nbStates))
 
 # Creating instance of TPGMM_GMR-------------------------------------------------------------------------------------- #
@@ -50,9 +62,9 @@ for n in range(nbSamples):
 
 # Plotting------------------------------------------------------------------------------------------------------------ #
 xaxis = 1
-yaxis = 2
-xlim = [-1.2, 0.8]
-ylim = [-1.1, 0.9]
+yaxis = 3
+xlim = [-0.2, 0.8]
+ylim = [-0.1, 0.9]
 
 # Demos--------------------------------------------------------------------------------------------------------------- #
 fig = plt.figure()
@@ -86,6 +98,6 @@ plt.title('Reproduction with generated task parameters')
 for n in range(nbSamples):
     TPGMMGMR.plotReproduction(rnewlist[n], xaxis, yaxis, ax3, showGaussians=True)
 
-print TPGMMGMR.getReproductionMatrix(rnewlist[0])
+print(TPGMMGMR.getReproductionMatrix(rnewlist[0]))
 
 plt.show()

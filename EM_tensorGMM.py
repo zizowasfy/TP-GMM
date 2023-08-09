@@ -42,9 +42,9 @@ def EM_tensorGMM(s, model):
         LL.append(sum(np.log(np.sum(L, axis=0)))/np.shape(L)[1])
         if nbIter>nbMinSteps:
             if LL[nbIter] - LL[nbIter-1] < maxDiffLL or nbIter==nbMaxSteps-1:
-                print 'EM converged after ' + str(nbIter) + ' iterations'
+                print('EM converged after ' + str(nbIter) + ' iterations')
                 return model
-    print 'The maximum number of ' + str(nbMaxSteps) + ' EM iterations has been reached'
+    print('The maximum number of ' + str(nbMaxSteps) + ' EM iterations has been reached')
     return model
 
 def computeGamma(Data, model):
