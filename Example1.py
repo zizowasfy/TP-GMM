@@ -10,7 +10,7 @@ nbSamples = 3  # nb of demonstrations
 nbVar = 4      # Dim !!
 nbFrames = 2 
 nbStates = 3   # nb of Gaussians
-nbData = 851
+nbData = 850
 
 # Preparing the samples----------------------------------------------------------------------------------------------- #
 slist = []
@@ -18,17 +18,18 @@ for i in range(nbSamples):
     pmat = np.empty(shape=(nbFrames, nbData), dtype=object)
     # tempData = np.loadtxt('sample' + str(i + 1) + '_Data.txt', delimiter=',')
     tempData = np.loadtxt('Demon' + str(i+1) + '_sample' + '_Data.txt', delimiter=',')
+    print(tempData.shape)
     for j in range(nbFrames):
         # tempA = np.loadtxt('sample' + str(i + 1) + '_frame' + str(j + 1) + '_A.txt', delimiter=',')
         # tempB = np.loadtxt('sample' + str(i + 1) + '_frame' + str(j + 1) + '_b.txt', delimiter=',')
         tempA = np.loadtxt('Demon' + str(i+1) + '_sample' + '_frame' + str(j + 1) + '_A.txt', delimiter=',')
         tempB = np.loadtxt('Demon' + str(i+1) + '_sample' + '_frame' + str(j + 1) + '_b.txt', delimiter=',')
 
-        tempData = tempData[:,:nbData]
-        tempA = tempA[:,:nbData*4]
-        tempB = tempB[:,:nbData]
-        print(tempA.shape)
-        print(tempB.shape)
+        # tempData = tempData[:,:nbData]
+        # tempA = tempA[:,:nbData*4]
+        # tempB = tempB[:,:nbData]
+        # print(tempA.shape)
+        # print(tempB.shape)
 
         for k in range(nbData):
             # pmat[j, k] = p(tempA[:, 3*k : 3*k + 3], tempB[:, k].reshape(len(tempB[:, k]), 1),
@@ -46,7 +47,7 @@ TPGMMGMR.fit(slist)
 # Reproduction for parameters used in demonstration------------------------------------------------------------------- #
 rdemolist = []
 for n in range(nbSamples):
-    rdemolist.append(TPGMMGMR.reproduce(slist[n].p, slist[n].Data[1:3,0]))
+    rdemolist.append(TPGMMGMR.reproduce(slist[n].p, slist[n].Data[1:4,0]))
 
 # Reproduction with generated parameters------------------------------------------------------------------------------ #
 rnewlist = []

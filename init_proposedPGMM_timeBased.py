@@ -12,7 +12,7 @@ def init_proposedPGMM_timeBased(s, modelcur):
         DataTmp = np.ndarray(shape=(np.shape(s[0].Data)[0], 0))
         for j in range (0, nbSamples):
             for k in range (0, s[j].nbData):
-                # print np.shape(np.dot(s[j].p[i, k].invA, (np.reshape(s[j].Data[:, k], newshape=(np.shape(s[0].Data)[0], 1)) - np.reshape(s[j].p[i, k].b, newshape=(np.shape(s[0].Data)[0], 1)))))
+                # print(np.shape(np.dot(s[j].p[i, k].invA, (np.reshape(s[j].Data[:, k], newshape=(np.shape(s[0].Data)[0], 1)) - np.reshape(s[j].p[i, k].b, newshape=(np.shape(s[0].Data)[0], 1))))))
                 DataTmp = np.append(DataTmp, np.dot(s[j].p[i,k].invA,(np.reshape(s[j].Data[:,k], newshape = (np.shape(s[0].Data)[0],1))-np.reshape(s[j].p[i, k].b, newshape=(np.shape(s[0].Data)[0], 1)))), axis = 1)
         DataAll = np.append(DataAll, DataTmp, axis=0)
     TimingSep = np.linspace(np.amin(DataAll[0,:]), np.amax(DataAll[0,:]), num = modelcur.nbStates+1)
