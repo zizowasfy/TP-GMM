@@ -34,6 +34,8 @@ def plotGMM(Mu, Sigma, color,display_mode, ax):
     maxsx = []
     minsy = []
     maxsy = []
+    minsz = []
+    maxsz = []
 
     if display_mode==1:
         nbDrawingSeg = 36
@@ -41,32 +43,34 @@ def plotGMM(Mu, Sigma, color,display_mode, ax):
         t = np.transpose(t)
         for j in range (0,nbData):
             stdev = Denman_Beavers_sqrtm(0.1*Sigma[:,:,j])
-            X = np.dot(np.transpose([np.cos(t), np.sin(t)]), np.real(stdev))
+            X = np.dot(np.transpose([np.cos(t), np.sin(t), np.cos(t)]), np.real(stdev))
             X = X + np.tile(np.transpose(Mu[:,j]), (nbDrawingSeg,1))
 
             minsx.append(min(X[:,0]))
             maxsx.append(max(X[:,0]))
             minsy.append(min(X[:,1]))
             maxsy.append(max(X[:,1]))
+            minsz.append(min(X[:,2]))
+            maxsz.append(max(X[:,2]))
 
             verts = []
             codes = []
             for i in range (0, nbDrawingSeg+1):
                 if i==0:
-                    vert = (X[0,0], X[0,1])
+                    vert = (X[0,0], X[0,1], X[0,2])
                     code = Path.MOVETO
                 elif i!=nbDrawingSeg:
-                    vert = (X[i,0], X[i,1])
+                    vert = (X[i,0], X[i,1], X[i,2])
                     code = Path.CURVE3
                 else:
-                    vert = (X[0,0], X[0,1])
+                    vert = (X[0,0], X[0,1], X[0,2])
                     code = Path.CURVE3
                 verts.append(vert)
                 codes.append(code)
-            path = Path(verts, codes)
-            patch = patches.PathPatch(path, facecolor=lightcolor, edgecolor=color, lw=2, zorder = 3)
-            ax.add_patch(patch)
-            ax.plot(Mu[0,:], Mu[1,:], "x",color = color, zorder = 3)
+            # path = Path(verts, codes)
+            # patch = patches.PathPatch(path, facecolor=lightcolor, edgecolor=color, lw=2, zorder = 3)
+            # ax.add_patch(patch)
+            ax.plot(Mu[0,:], Mu[1,:], Mu[2,:], "x",color = color, zorder = 3)
         # ax.set_xlim(min(minsx),max(maxsx))
         # ax.set_ylim(min(minsy),max(maxsy))
     elif display_mode == 2:

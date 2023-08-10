@@ -17,17 +17,18 @@ class TPGMM_GMR(object):
     def reproduce(self, p, currentPosition):
         return reproduction_DSGMR(self.s[0].Data[0,:], self.model, p, currentPosition)
 
-    def plotReproduction(self, r, xaxis, yaxis, ax, showGaussians = True, lw = 7):
+    def plotReproduction(self, r, xaxis, yaxis, zaxis, ax, showGaussians = True, lw = 7):
         for m in range(r.p.shape[0]):
             ax.plot([r.p[m, 0].b[xaxis, 0], r.p[m, 0].b[xaxis, 0] + r.p[m, 0].A[xaxis, yaxis]],
                      [r.p[m, 0].b[yaxis, 0], r.p[m, 0].b[yaxis, 0] + r.p[m, 0].A[yaxis, yaxis]],
+                     [r.p[m, 0].b[zaxis, 0], r.p[m, 0].b[zaxis, 0] + r.p[m, 0].A[zaxis, zaxis]],
                      lw=lw, color=[0, 1, m])
-            ax.plot(r.p[m, 0].b[xaxis, 0], r.p[m, 0].b[yaxis, 0], ms=30, marker='.', color=[0, 1, m])
-        ax.plot(r.Data[xaxis, 0], r.Data[yaxis, 0], marker='.', ms=15)
-        ax.plot(r.Data[xaxis, :], r.Data[yaxis, :])
+            ax.plot(r.p[m, 0].b[xaxis, 0], r.p[m, 0].b[yaxis, 0], r.p[m, 0].b[zaxis, 0], ms=30, marker='.', color=[0, 1, m])
+        ax.plot(r.Data[xaxis, 0], r.Data[yaxis, 0], r.Data[zaxis, 0], marker='.', ms=15)
+        ax.plot(r.Data[xaxis, :], r.Data[yaxis, :], r.Data[zaxis, :])
         if showGaussians:
-            plotGMM(r.Mu[np.ix_([xaxis, yaxis], range(r.Mu.shape[1]), [0])],
-                    r.Sigma[np.ix_([xaxis, yaxis], [xaxis, yaxis], range(r.Mu.shape[1]), [0])], [0.5, 0.5, 0.5], 1, ax)
+            plotGMM(r.Mu[np.ix_([xaxis, yaxis, zaxis], range(r.Mu.shape[1]), [0])],
+                    r.Sigma[np.ix_([xaxis, yaxis, zaxis], [xaxis, yaxis, zaxis], range(r.Mu.shape[1]), [0])], [0.5, 0.5, 0.5], 1, ax)
 
     def getReproductionMatrix(self, r):
         return r.Data
