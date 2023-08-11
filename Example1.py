@@ -9,7 +9,7 @@ from copy import deepcopy
 nbSamples = 3  # nb of demonstrations
 nbVar = 4      # Dim !!
 nbFrames = 2 
-nbStates = 2   # nb of Gaussians
+nbStates = 5   # nb of Gaussians
 nbData = 850
 
 # Preparing the samples----------------------------------------------------------------------------------------------- #
@@ -46,6 +46,8 @@ TPGMMGMR.fit(slist)
 rdemolist = []
 for n in range(nbSamples):
     rdemolist.append(TPGMMGMR.reproduce(slist[n].p, slist[n].Data[1:nbVar,0]))
+    print(rdemolist[n].Mu.shape)
+    print(rdemolist[n].Sigma.shape)
 
 # Reproduction with generated parameters------------------------------------------------------------------------------ #
 rnewlist = []
@@ -59,49 +61,48 @@ for n in range(nbSamples):
             newP[m, k].b = newP[m, k].b * bTransform
     rnewlist.append(TPGMMGMR.reproduce(newP, slist[n].Data[1:nbVar, 0]))
 
+# Saving GMM to rosbag ------------------------------------------------------------------------------------------------------------ #
+TPGMMGMR.convertToGMM(rnewlist[0])
+
 # Plotting------------------------------------------------------------------------------------------------------------ #
 xaxis = 1
-yaxis = 2
-zaxis = 3
-xlim = [-0.2, 0.8]
-ylim = [-0.2, 0.3]
-zlim = [-0.1, 0.9]
+yaxis = 3
+xlim = [-0.3, 0.8]
+ylim = [-0.2, 0.8]
 
 # Demos--------------------------------------------------------------------------------------------------------------- #
 fig = plt.figure()
-ax1 = fig.add_subplot(1,3,1, projection='3d')
+ax1 = fig.add_subplot(131)
 ax1.set_xlim(xlim)
 ax1.set_ylim(ylim)
-ax1.set_zlim(zlim)
-# ax1.set_aspect(abs(xlim[1]-xlim[0])/abs(ylim[1]-ylim[0]))
+ax1.set_aspect(abs(xlim[1]-xlim[0])/abs(ylim[1]-ylim[0]))
 plt.title('Demonstrations')
 for n in range(nbSamples):
     for m in range(nbFrames):
-        ax1.plot([slist[n].p[m,0].b[xaxis,0], slist[n].p[m,0].b[xaxis,0] + slist[n].p[m,0].A[xaxis,yaxis]], [slist[n].p[m,0].b[yaxis,0], slist[n].p[m,0].b[yaxis,0] + slist[n].p[m,0].A[yaxis,yaxis]], 
-                 [slist[n].p[m,0].b[zaxis,0], slist[n].p[m,0].b[zaxis,0] + slist[n].p[m,0].A[zaxis,zaxis]], lw = 3, color = [0,1,m])
-        ax1.plot(slist[n].p[m,0].b[xaxis,0], slist[n].p[m,0].b[yaxis,0], slist[n].p[m,0].b[zaxis,0], ms = 10, marker = '.', color = [0,1,m])
-    ax1.plot(slist[n].Data[xaxis,0], slist[n].Data[yaxis,0], slist[n].Data[zaxis,0], marker = '.', ms = 15)
-    ax1.plot(slist[n].Data[xaxis,:], slist[n].Data[yaxis,:], slist[n].Data[zaxis,:])
+        ax1.plot([slist[n].p[m,0].b[xaxis,0], slist[n].p[m,0].b[xaxis,0] + slist[n].p[m,0].A[xaxis,yaxis]], [slist[n].p[m,0].b[yaxis,0], slist[n].p[m,0].b[yaxis,0] + slist[n].p[m,0].A[yaxis,yaxis]], lw = 3, color = [0,1,m])
+        ax1.plot(slist[n].p[m,0].b[xaxis,0], slist[n].p[m,0].b[yaxis,0], ms = 10, marker = '.', color = [0,1,m])
+    ax1.plot(slist[n].Data[xaxis,0], slist[n].Data[yaxis,0], marker = '.', ms = 15)
+    ax1.plot(slist[n].Data[xaxis,:], slist[n].Data[yaxis,:])
 
 # Reproductions with training parameters------------------------------------------------------------------------------ #
-ax2 = fig.add_subplot(1,3,2, projection='3d')
+ax2 = fig.add_subplot(132)
 ax2.set_xlim(xlim)
 ax2.set_ylim(ylim)
-ax2.set_zlim(zlim)
-# ax2.set_aspect(abs(xlim[1]-xlim[0])/abs(ylim[1]-ylim[0]))
+ax2.set_aspect(abs(xlim[1]-xlim[0])/abs(ylim[1]-ylim[0]))
 plt.title('Reproductions with same task parameters')
 for n in range(nbSamples):
-    TPGMMGMR.plotReproduction(rdemolist[n], xaxis, yaxis, zaxis, ax2, showGaussians=True)
+    TPGMMGMR.plotReproduction(rdemolist[n], xaxis, yaxis, ax2, showGaussians=True)
 
 # Reproductions with new parameters----------------------------------------------------------------------------------- #
-# ax3 = fig.add_subplot(1,3,3, projection='3d')
-# ax3.set_xlim(xlim)
-# ax3.set_ylim(ylim)
-# # ax3.set_aspect(abs(xlim[1]-xlim[0])/abs(ylim[1]-ylim[0]))
-# plt.title('Reproduction with generated task parameters')
-# for n in range(nbSamples):
-#     TPGMMGMR.plotReproduction(rnewlist[n], xaxis, yaxis, ax3, showGaussians=False)
+ax3 = fig.add_subplot(133)
+ax3.set_xlim(xlim)
+ax3.set_ylim(ylim)
+ax3.set_aspect(abs(xlim[1]-xlim[0])/abs(ylim[1]-ylim[0]))
+plt.title('Reproduction with generated task parameters')
+for n in range(nbSamples):
+    TPGMMGMR.plotReproduction(rnewlist[n], xaxis, yaxis, ax3, showGaussians=True)
 
+print("ProductionMatrix:")
 print(TPGMMGMR.getReproductionMatrix(rnewlist[0]))
 
 plt.show()

@@ -2,7 +2,7 @@ import numpy as np
 def init_proposedPGMM_timeBased(s, modelcur):
     from refClass import ref
     from modelClass import model
-    diagRegularizationFactor = 0.05
+    diagRegularizationFactor = 0.01
     nbSamples = len(s)
     DataTotalSize = 0
     for i in range(0, len(s)):
