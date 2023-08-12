@@ -51,11 +51,6 @@ class TPGMM_GMR(object):
             g.means = r.Mu[:,gaus,0]
             g.covariances = np.ravel(r.Sigma[:,:,gaus,0])
             gmm.gaussians.append(copy.deepcopy(g))
-            # print(g.means)
-            # print(gmm.gaussians)
-            # print("--------")
-
-        # print(gmm.gaussians)
         gmm.weights = self.model.Priors # or r.H
 
         ## Writing to rosbag

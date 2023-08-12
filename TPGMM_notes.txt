@@ -4,5 +4,20 @@
 - Find where the training-over-datatype (either time or pose_error) is defined in the code
 
 AFter getting the Mu and Sigma in 3D:
-- Either -> convert them to a format so that the gmm_gmr ros node can read it and visualize it in Rviz
+- Either -> convert them to a format so that the gmm_gmr ros node can read it and visualize it in Rviz [DONE]
       OR -> plot the GMM (elipses) in python TPGMM package, but will have to double check the regression!
+
+After visualizing the TPGMM in Rviz:
+
+--TPGMM node:
+  - Need to take desired starting and goal poses and feed them as input to TPGMM node (ros service)
+  - Read all Demons and convert them in the txt format (i.e. A & b and Data matrices), 
+    and create newParameter matrix from the input (starting and goal poses)
+    - Now that demons_to_samples.ipynb is run in tp-gmm.py, I only need to pass 'task_name' and 'task_num' to 
+      demons_to_samples.ipynb externally. This can be done by either writing to a .txt file or .py. 
+  - Fit the GMM
+  - Reproduce with newParameter matix to obtain the GMM which will be passed to gaussian_mixture_model nodes
+-- gaussian_mixture_model nodes:
+  - visualize the TPGMM in Rviz
+  - doRegression 
+

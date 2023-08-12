@@ -1,3 +1,10 @@
+import sys
+sys.path.append("/home/zizo/myGithubRepos/TP-GMM/include")
+data_dir = "/home/zizo/myGithubRepos/TP-GMM/data/"
+
+import nbformat
+from nbconvert.preprocessors import ExecutePreprocessor
+
 import numpy as np
 from sClass import s
 from pClass import p
@@ -12,18 +19,24 @@ nbFrames = 2
 nbStates = 5   # nb of Gaussians
 nbData = 850
 
+## Running the demons_to_samples.ipynb-------------------------------------------------------------------------------- #
+with open("demons_to_samples.ipynb") as f:
+    nb_in = nbformat.read(f, as_version=4)
+ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
+nb_out = ep.preprocess(nb_in)
+
 # Preparing the samples----------------------------------------------------------------------------------------------- #
 slist = []
 for i in range(nbSamples):
     pmat = np.empty(shape=(nbFrames, nbData), dtype=object)
     # tempData = np.loadtxt('sample' + str(i + 1) + '_Data.txt', delimiter=',')
-    tempData = np.loadtxt('Demon' + str(i+1) + '_sample' + '_Data.txt', delimiter=',')
+    tempData = np.loadtxt(data_dir + 'Demon' + str(i+1) + '_sample' + '_Data.txt', delimiter=',')
     print(tempData.shape)
     for j in range(nbFrames):
         # tempA = np.loadtxt('sample' + str(i + 1) + '_frame' + str(j + 1) + '_A.txt', delimiter=',')
         # tempB = np.loadtxt('sample' + str(i + 1) + '_frame' + str(j + 1) + '_b.txt', delimiter=',')
-        tempA = np.loadtxt('Demon' + str(i+1) + '_sample' + '_frame' + str(j + 1) + '_A.txt', delimiter=',')
-        tempB = np.loadtxt('Demon' + str(i+1) + '_sample' + '_frame' + str(j + 1) + '_b.txt', delimiter=',')
+        tempA = np.loadtxt(data_dir +'Demon' + str(i+1) + '_sample' + '_frame' + str(j + 1) + '_A.txt', delimiter=',')
+        tempB = np.loadtxt(data_dir +'Demon' + str(i+1) + '_sample' + '_frame' + str(j + 1) + '_b.txt', delimiter=',')
 
         # tempData = tempData[:,:nbData]
         # tempA = tempA[:,:nbData*4]
@@ -62,7 +75,7 @@ for n in range(nbSamples):
     rnewlist.append(TPGMMGMR.reproduce(newP, slist[n].Data[1:nbVar, 0]))
 
 # Saving GMM to rosbag ------------------------------------------------------------------------------------------------------------ #
-TPGMMGMR.convertToGMM(rnewlist[0])
+TPGMMGMR.convertToGMM(rdemolist[0])
 
 # Plotting------------------------------------------------------------------------------------------------------------ #
 xaxis = 1
