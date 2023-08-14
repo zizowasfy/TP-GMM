@@ -11,10 +11,11 @@ After visualizing the TPGMM in Rviz:
 
 --TPGMM node:
   - Need to take desired starting and goal poses and feed them as input to TPGMM node (ros service)
+    - rosservice input: (task_name, start(frame1) & goal(frame2) poses (A&b matrices))
   - Read all Demons and convert them in the txt format (i.e. A & b and Data matrices), 
     and create newParameter matrix from the input (starting and goal poses)
     - Now that demons_to_samples.ipynb is run in tp-gmm.py, I only need to pass 'task_name' and 'task_num' to 
-      demons_to_samples.ipynb externally. This can be done by either writing to a .txt file or .py. 
+      demons_to_samples.ipynb externally. This can be done by either writing to a .txt file or .py. [Done with .pkl file]
   - Fit the GMM
   - Reproduce with newParameter matix to obtain the GMM which will be passed to gaussian_mixture_model nodes
 -- gaussian_mixture_model nodes:

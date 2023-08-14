@@ -1,10 +1,21 @@
-import sys
-sys.path.append("/home/zizo/myGithubRepos/TP-GMM/include")
-data_dir = "/home/zizo/myGithubRepos/TP-GMM/data/"
+#!/usr/bin/env python3
+# ROS stuff
+import rospy
+from geometry_msgs.msg import Pose
+from tp_gmm.srv import *
+import threading
+mutex = threading.Lock()
 
+# System and directories stuff
+import sys
+sys.path.append("/home/zizo/haptics-ctrl_ws/src/tp_gmm/include")
+data_dir = "/home/zizo/haptics-ctrl_ws/src/tp_gmm/data/"
+scripts_dir = "/home/zizo/haptics-ctrl_ws/src/tp_gmm/scripts/"
 import nbformat
 from nbconvert.preprocessors import ExecutePreprocessor
+import pickle
 
+# tpgmm-related stuff
 import numpy as np
 from sClass import s
 from pClass import p
@@ -12,110 +23,160 @@ from matplotlib import pyplot as plt
 from TPGMM_GMR import TPGMM_GMR
 from copy import deepcopy
 
-# Initialization of parameters and properties------------------------------------------------------------------------- #
-nbSamples = 3  # nb of demonstrations
-nbVar = 4      # Dim !!
-nbFrames = 2 
-nbStates = 5   # nb of Gaussians
-nbData = 850
+class TPGMM:
+    def __init__(self):
 
-## Running the demons_to_samples.ipynb-------------------------------------------------------------------------------- #
-with open("demons_to_samples.ipynb") as f:
-    nb_in = nbformat.read(f, as_version=4)
-ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
-nb_out = ep.preprocess(nb_in)
+        rospy.init_node("tp_gmm_node")
+        print(" --> Node tp_gmm_node is initialied")
+        rospy.Service("StartTPGMM_service", StartTPGMM, self.startTPGMM)
+        
+        self.demonsToSamples_flag = False   
+        self.demonsToSamples()
 
-# Preparing the samples----------------------------------------------------------------------------------------------- #
-slist = []
-for i in range(nbSamples):
-    pmat = np.empty(shape=(nbFrames, nbData), dtype=object)
-    # tempData = np.loadtxt('sample' + str(i + 1) + '_Data.txt', delimiter=',')
-    tempData = np.loadtxt(data_dir + 'Demon' + str(i+1) + '_sample' + '_Data.txt', delimiter=',')
-    print(tempData.shape)
-    for j in range(nbFrames):
-        # tempA = np.loadtxt('sample' + str(i + 1) + '_frame' + str(j + 1) + '_A.txt', delimiter=',')
-        # tempB = np.loadtxt('sample' + str(i + 1) + '_frame' + str(j + 1) + '_b.txt', delimiter=',')
-        tempA = np.loadtxt(data_dir +'Demon' + str(i+1) + '_sample' + '_frame' + str(j + 1) + '_A.txt', delimiter=',')
-        tempB = np.loadtxt(data_dir +'Demon' + str(i+1) + '_sample' + '_frame' + str(j + 1) + '_b.txt', delimiter=',')
+    def startTPGMM(self, req):
+        
+        ## Receiving service Request
+        self.task_name = req.task_name
+        # frame1_pose = req.start_pose
+        # frame2_pose = req.goal_pose
 
-        # tempData = tempData[:,:nbData]
-        # tempA = tempA[:,:nbData*4]
-        # tempB = tempB[:,:nbData]
-        # print(tempA.shape)
-        # print(tempB.shape)
+        ## Fetching Samples and paramters
+        self.demonsToSamples_flag = True
+        print("startTPGMM")
 
-        for k in range(nbData):
-            pmat[j, k] = p(tempA[:, nbVar*k : nbVar*k + nbVar], tempB[:, k].reshape(len(tempB[:, k]), 1),
-                           np.linalg.pinv(tempA[:, nbVar*k : nbVar*k + nbVar]), nbStates)                         
-    slist.append(s(pmat, tempData, tempData.shape[1], nbStates))
+        rospy.sleep(0.5)
+        while not rospy.is_shutdown() and self.demonsToSamples_flag: pass   # wait until demonsToSamples finishes
 
-# Creating instance of TPGMM_GMR-------------------------------------------------------------------------------------- #
-TPGMMGMR = TPGMM_GMR(nbStates, nbFrames, nbVar)
+        with open(scripts_dir + 'demons_info2.pkl', 'rb') as fp:
+            demons_info2 = pickle.load(fp)
+            print("Reference Demon: ", demons_info2)
 
-# Learning the model-------------------------------------------------------------------------------------------------- #
-TPGMMGMR.fit(slist)
+        # Initialization of parameters and properties------------------------------------------------------------------------- #
+        self.nbSamples = demons_info2['nbDemons']  # nb of demonstrations
+        self.nbVar = 4      # Dim !!
+        self.nbFrames = 2 
+        self.nbStates = 5   # nb of Gaussians
+        self.nbData = demons_info2['ref_nbpoints']
 
-# Reproduction for parameters used in demonstration------------------------------------------------------------------- #
-rdemolist = []
-for n in range(nbSamples):
-    rdemolist.append(TPGMMGMR.reproduce(slist[n].p, slist[n].Data[1:nbVar,0]))
-    print(rdemolist[n].Mu.shape)
-    print(rdemolist[n].Sigma.shape)
+        return StartTPGMMResponse(True)
+    
+    ## Running the demons_to_samples.ipynb-------------------------------------------------------------------------------- #
+    def demonsToSamples(self):
+        # Waiting for a startTPGMM request - the while was the only way to do that to avoid 'no current event loop in thread' error
+        while not rospy.is_shutdown() and not self.demonsToSamples_flag:
+            # print("demonsToSamples")
+            pass
 
-# Reproduction with generated parameters------------------------------------------------------------------------------ #
-rnewlist = []
-for n in range(nbSamples):
-    newP = deepcopy(slist[n].p)
-    for m in range(1, nbFrames):
-        bTransform = np.random.rand(nbVar, 1) + 0.5
-        aTransform = np.random.rand(nbVar, nbVar) +0.5
-        for k in range(nbData):
-            newP[m, k].A = newP[m, k].A * aTransform
-            newP[m, k].b = newP[m, k].b * bTransform
-    rnewlist.append(TPGMMGMR.reproduce(newP, slist[n].Data[1:nbVar, 0]))
+        # Sending task_name to demons_to_samples.ipynb in .pkl file
+        demons_info1 = {"task_name": self.task_name}
+        with open(scripts_dir + 'demons_info1.pkl', 'wb') as fp:
+            pickle.dump(demons_info1, fp)
+            print("demons_info1: ", demons_info1)
 
-# Saving GMM to rosbag ------------------------------------------------------------------------------------------------------------ #
-TPGMMGMR.convertToGMM(rdemolist[0])
+        # Running demons_to_samples.ipynb
+        with open(scripts_dir + "demons_to_samples.ipynb") as f:
+            nb_in = nbformat.read(f, as_version=4)
+        ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
+        nb_out = ep.preprocess(nb_in)
+        print("demons_to_samples finished running!")
+        self.demonsToSamples_flag = False
 
-# Plotting------------------------------------------------------------------------------------------------------------ #
-xaxis = 1
-yaxis = 3
-xlim = [-0.3, 0.8]
-ylim = [-0.2, 0.8]
+# # Preparing the samples----------------------------------------------------------------------------------------------- #
+# slist = []
+# for i in range(nbSamples):
+#     pmat = np.empty(shape=(nbFrames, nbData), dtype=object)
+#     # tempData = np.loadtxt('sample' + str(i + 1) + '_Data.txt', delimiter=',')
+#     tempData = np.loadtxt(data_dir + 'Demon' + str(i+1) + '_sample' + '_Data.txt', delimiter=',')
+#     print(tempData.shape)
+#     for j in range(nbFrames):
+#         # tempA = np.loadtxt('sample' + str(i + 1) + '_frame' + str(j + 1) + '_A.txt', delimiter=',')
+#         # tempB = np.loadtxt('sample' + str(i + 1) + '_frame' + str(j + 1) + '_b.txt', delimiter=',')
+#         tempA = np.loadtxt(data_dir +'Demon' + str(i+1) + '_sample' + '_frame' + str(j + 1) + '_A.txt', delimiter=',')
+#         tempB = np.loadtxt(data_dir +'Demon' + str(i+1) + '_sample' + '_frame' + str(j + 1) + '_b.txt', delimiter=',')
 
-# Demos--------------------------------------------------------------------------------------------------------------- #
-fig = plt.figure()
-ax1 = fig.add_subplot(131)
-ax1.set_xlim(xlim)
-ax1.set_ylim(ylim)
-ax1.set_aspect(abs(xlim[1]-xlim[0])/abs(ylim[1]-ylim[0]))
-plt.title('Demonstrations')
-for n in range(nbSamples):
-    for m in range(nbFrames):
-        ax1.plot([slist[n].p[m,0].b[xaxis,0], slist[n].p[m,0].b[xaxis,0] + slist[n].p[m,0].A[xaxis,yaxis]], [slist[n].p[m,0].b[yaxis,0], slist[n].p[m,0].b[yaxis,0] + slist[n].p[m,0].A[yaxis,yaxis]], lw = 3, color = [0,1,m])
-        ax1.plot(slist[n].p[m,0].b[xaxis,0], slist[n].p[m,0].b[yaxis,0], ms = 10, marker = '.', color = [0,1,m])
-    ax1.plot(slist[n].Data[xaxis,0], slist[n].Data[yaxis,0], marker = '.', ms = 15)
-    ax1.plot(slist[n].Data[xaxis,:], slist[n].Data[yaxis,:])
+#         # tempData = tempData[:,:nbData]
+#         # tempA = tempA[:,:nbData*4]
+#         # tempB = tempB[:,:nbData]
+#         # print(tempA.shape)
+#         # print(tempB.shape)
 
-# Reproductions with training parameters------------------------------------------------------------------------------ #
-ax2 = fig.add_subplot(132)
-ax2.set_xlim(xlim)
-ax2.set_ylim(ylim)
-ax2.set_aspect(abs(xlim[1]-xlim[0])/abs(ylim[1]-ylim[0]))
-plt.title('Reproductions with same task parameters')
-for n in range(nbSamples):
-    TPGMMGMR.plotReproduction(rdemolist[n], xaxis, yaxis, ax2, showGaussians=True)
+#         for k in range(nbData):
+#             pmat[j, k] = p(tempA[:, nbVar*k : nbVar*k + nbVar], tempB[:, k].reshape(len(tempB[:, k]), 1),
+#                            np.linalg.pinv(tempA[:, nbVar*k : nbVar*k + nbVar]), nbStates)                         
+#     slist.append(s(pmat, tempData, tempData.shape[1], nbStates))
 
-# Reproductions with new parameters----------------------------------------------------------------------------------- #
-ax3 = fig.add_subplot(133)
-ax3.set_xlim(xlim)
-ax3.set_ylim(ylim)
-ax3.set_aspect(abs(xlim[1]-xlim[0])/abs(ylim[1]-ylim[0]))
-plt.title('Reproduction with generated task parameters')
-for n in range(nbSamples):
-    TPGMMGMR.plotReproduction(rnewlist[n], xaxis, yaxis, ax3, showGaussians=True)
+# # Creating instance of TPGMM_GMR-------------------------------------------------------------------------------------- #
+# TPGMMGMR = TPGMM_GMR(nbStates, nbFrames, nbVar)
 
-print("ProductionMatrix:")
-print(TPGMMGMR.getReproductionMatrix(rnewlist[0]))
+# # Learning the model-------------------------------------------------------------------------------------------------- #
+# TPGMMGMR.fit(slist)
 
-plt.show()
+# # Reproduction for parameters used in demonstration------------------------------------------------------------------- #
+# rdemolist = []
+# for n in range(nbSamples):
+#     rdemolist.append(TPGMMGMR.reproduce(slist[n].p, slist[n].Data[1:nbVar,0]))
+#     print(rdemolist[n].Mu.shape)
+#     print(rdemolist[n].Sigma.shape)
+
+# # Reproduction with generated parameters------------------------------------------------------------------------------ #
+# rnewlist = []
+# for n in range(nbSamples):
+#     newP = deepcopy(slist[n].p)
+#     for m in range(1, nbFrames):
+#         bTransform = np.random.rand(nbVar, 1) + 0.5
+#         aTransform = np.random.rand(nbVar, nbVar) +0.5
+#         for k in range(nbData):
+#             newP[m, k].A = newP[m, k].A * aTransform
+#             newP[m, k].b = newP[m, k].b * bTransform
+#     rnewlist.append(TPGMMGMR.reproduce(newP, slist[n].Data[1:nbVar, 0]))
+
+# # Saving GMM to rosbag ------------------------------------------------------------------------------------------------------------ #
+# TPGMMGMR.convertToGMM(rdemolist[0])
+
+# # Plotting------------------------------------------------------------------------------------------------------------ #
+# xaxis = 1
+# yaxis = 3
+# xlim = [-0.3, 0.8]
+# ylim = [-0.2, 0.8]
+
+# # Demos--------------------------------------------------------------------------------------------------------------- #
+# fig = plt.figure()
+# ax1 = fig.add_subplot(131)
+# ax1.set_xlim(xlim)
+# ax1.set_ylim(ylim)
+# ax1.set_aspect(abs(xlim[1]-xlim[0])/abs(ylim[1]-ylim[0]))
+# plt.title('Demonstrations')
+# for n in range(nbSamples):
+#     for m in range(nbFrames):
+#         ax1.plot([slist[n].p[m,0].b[xaxis,0], slist[n].p[m,0].b[xaxis,0] + slist[n].p[m,0].A[xaxis,yaxis]], [slist[n].p[m,0].b[yaxis,0], slist[n].p[m,0].b[yaxis,0] + slist[n].p[m,0].A[yaxis,yaxis]], lw = 3, color = [0,1,m])
+#         ax1.plot(slist[n].p[m,0].b[xaxis,0], slist[n].p[m,0].b[yaxis,0], ms = 10, marker = '.', color = [0,1,m])
+#     ax1.plot(slist[n].Data[xaxis,0], slist[n].Data[yaxis,0], marker = '.', ms = 15)
+#     ax1.plot(slist[n].Data[xaxis,:], slist[n].Data[yaxis,:])
+
+# # Reproductions with training parameters------------------------------------------------------------------------------ #
+# ax2 = fig.add_subplot(132)
+# ax2.set_xlim(xlim)
+# ax2.set_ylim(ylim)
+# ax2.set_aspect(abs(xlim[1]-xlim[0])/abs(ylim[1]-ylim[0]))
+# plt.title('Reproductions with same task parameters')
+# for n in range(nbSamples):
+#     TPGMMGMR.plotReproduction(rdemolist[n], xaxis, yaxis, ax2, showGaussians=True)
+
+# # Reproductions with new parameters----------------------------------------------------------------------------------- #
+# ax3 = fig.add_subplot(133)
+# ax3.set_xlim(xlim)
+# ax3.set_ylim(ylim)
+# ax3.set_aspect(abs(xlim[1]-xlim[0])/abs(ylim[1]-ylim[0]))
+# plt.title('Reproduction with generated task parameters')
+# for n in range(nbSamples):
+#     TPGMMGMR.plotReproduction(rnewlist[n], xaxis, yaxis, ax3, showGaussians=True)
+
+# print("ProductionMatrix:")
+# print(TPGMMGMR.getReproductionMatrix(rnewlist[0]))
+
+# plt.show()
+
+if __name__ == "__main__":
+
+    tpgmm = TPGMM()
+    rospy.spin()
