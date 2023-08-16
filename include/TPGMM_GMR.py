@@ -37,7 +37,7 @@ class TPGMM_GMR(object):
         return r.Data
 
     # Converts the learnded GMM into a format that gmm_rviz_converter node can visualize it in Rviz
-    def convertToGMM(self, r):
+    def convertToGM(self, r):
 
         ## converting to GaussianMixture() msg 
         nbGaussians = r.Mu.shape[1]
@@ -54,6 +54,8 @@ class TPGMM_GMR(object):
         gmm.weights = self.model.Priors # or r.H
 
         ## Writing to rosbag
-        wbag = rosbag.Bag("/home/zizo/myGithubRepos/TP-GMM/tpgmm_mix.bag", 'w')
+        wbag = rosbag.Bag("/home/zizo/haptics-ctrl_ws/src/tp_gmm/data/tpgmm_mix.bag", 'w')
         wbag.write("/gmm/mix", gmm)
         wbag.close()
+
+        return gmm
