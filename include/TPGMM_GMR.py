@@ -48,8 +48,8 @@ class TPGMM_GMR(object):
         # allCovariances = np.ravel(r.Sigma[:,:,:,0]) # (4,4,5) -> (80, 1) --every 16 elements represent one-unit Gaussian 
 
         for gaus in range(nbGaussians):
-            g.means = r.Mu[:,gaus,0]
-            g.covariances = np.ravel(r.Sigma[:,:,gaus,0])
+            g.means = r.Mu[:,gaus,-1]
+            g.covariances = np.ravel(r.Sigma[:,:,gaus,-1])
             gmm.gaussians.append(copy.deepcopy(g))
         gmm.weights = self.model.Priors # or r.H
 

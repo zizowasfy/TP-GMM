@@ -22,7 +22,7 @@ from sClass import s
 from pClass import p
 from matplotlib import pyplot as plt
 from TPGMM_GMR import TPGMM_GMR
-from copy import deepcopy
+from copy import deepcopy,copy
 
 class TPGMM:
     def __init__(self):
@@ -51,7 +51,7 @@ class TPGMM:
 
         with open(scripts_dir + 'demons_info2.pkl', 'rb') as fp:
             self.demons_info2 = pickle.load(fp)
-            print("Reference Demon: ", self.demons_info2)
+            print("demons_info2: ", self.demons_info2)
 
         ## Initialization of parameters and properties------------------------------------------------------------------------- #
         self.nbSamples = self.demons_info2['nbDemons']  # nb of demonstrations
@@ -86,17 +86,18 @@ class TPGMM:
 
     ## Preparing the samples and fit ----------------------------------------------------------------------------------------- #
     def tpGMM(self):
+        demons_nums = self.demons_info2['demons_nums']
         self.slist = []
         for i in range(self.nbSamples):
             pmat = np.empty(shape=(self.nbFrames, self.nbData), dtype=object)
             # tempData = np.loadtxt('sample' + str(i + 1) + '_Data.txt', delimiter=',')
-            tempData = np.loadtxt(data_dir + 'Demon' + str(i+1) + '_sample' + '_Data.txt', delimiter=',')
+            tempData = np.loadtxt(data_dir + demons_nums[i] + '_sample' + '_Data.txt', delimiter=',')
             print(tempData.shape)
             for j in range(self.nbFrames):
                 # tempA = np.loadtxt('sample' + str(i + 1) + '_frame' + str(j + 1) + '_A.txt', delimiter=',')
                 # tempB = np.loadtxt('sample' + str(i + 1) + '_frame' + str(j + 1) + '_b.txt', delimiter=',')
-                tempA = np.loadtxt(data_dir +'Demon' + str(i+1) + '_sample' + '_frame' + str(j + 1) + '_A.txt', delimiter=',')
-                tempB = np.loadtxt(data_dir +'Demon' + str(i+1) + '_sample' + '_frame' + str(j + 1) + '_b.txt', delimiter=',')
+                tempA = np.loadtxt(data_dir + demons_nums[i] + '_sample' + '_frame' + str(j + 1) + '_A.txt', delimiter=',')
+                tempB = np.loadtxt(data_dir + demons_nums[i] + '_sample' + '_frame' + str(j + 1) + '_b.txt', delimiter=',')
 
                 for k in range(self.nbData):
                     pmat[j, k] = p(tempA[:, self.nbVar*k : self.nbVar*k + self.nbVar], tempB[:, k].reshape(len(tempB[:, k]), 1),
@@ -108,7 +109,7 @@ class TPGMM:
 
         # Learning the model-------------------------------------------------------------------------------------------------- #
         self.TPGMMGMR.fit(self.slist)
-
+        
         self.tpGMMGMR()
 
     def tpGMMGMR(self):
@@ -133,8 +134,10 @@ class TPGMM:
 
         # Reproduction with generated parameters------------------------------------------------------------------------------ #
         self.getFramePoses()
-        newP = deepcopy(self.slist[int(self.demons_info2['ref'][-1])-1].p)
-        newb1 = np.array([[0], [self.frame1_pose.position.x[0]], [self.frame1_pose.position.y[0]], [self.frame1_pose.position.z[0]]], dtype=object)
+        newP = deepcopy(self.slist[self.demons_info2['demons_nums'].index(self.demons_info2['ref'])].p)
+        print("self.demons_info2['demons_nums'].index(self.demons_info2['ref']) = ", self.demons_info2['demons_nums'].index(self.demons_info2['ref']))
+        # newP = p(np.zeros((self.nbVar,self.nbVar)), np.zeros((self.nbVar,1)), np.zeros((self.nbVar,self.nbVar)), self.nbStates)
+        newb1 = np.array([[0], [self.frame1_pose.position.x], [self.frame1_pose.position.y], [self.frame1_pose.position.z]], dtype=object)
         newb2 = np.array([[0], [self.frame2_pose.position.x], [self.frame2_pose.position.y], [self.frame2_pose.position.z]], dtype=object)
 
         print([self.frame1_pose.orientation.x, self.frame1_pose.orientation.y, self.frame1_pose.orientation.z, self.frame1_pose.orientation.w])
@@ -160,15 +163,16 @@ class TPGMM:
         self.tpgmm_pub.publish(gmm)
         print("GMM is Published!")
         # self.tpGMMPlot()
-        rospy.signal_shutdown("TP-GMM Node is Shutting Down!")
+        # rospy.signal_shutdown("TP-GMM Node is Shutting Down!")
 
     ## Check if frame1_pose and frame2_pose hasn't been requested from startTPGMM rosservice, fill them with these values
     def getFramePoses(self):
         if (sqrt(self.frame1_pose.position.x**2 + self.frame1_pose.position.y**2 + self.frame1_pose.position.z**2) == 0):
             print("... Didn't receive a requested start_pose")
-            self.frame1_pose.position.x, self.frame1_pose.position.y, self.frame1_pose.position.z = self.slist[int(self.demons_info2['ref'][-1])-1].p[0,0].b[1:,:]
+            self.frame1_pose.position.x, self.frame1_pose.position.y, self.frame1_pose.position.z = self.slist[self.demons_info2['demons_nums'].index(self.demons_info2['ref'])].p[0,0].b[1:,:]
+            self.frame1_pose.position.x, self.frame1_pose.position.y, self.frame1_pose.position.z = self.frame1_pose.position.x[0], self.frame1_pose.position.y[0], self.frame1_pose.position.z[0]
             # TODO: Fill the .orientation after adding rotMat2Quat() function
-            r = R.from_matrix(self.slist[int(self.demons_info2['ref'][-1])-1].p[0,0].A[1:,1:])
+            r = R.from_matrix(self.slist[self.demons_info2['demons_nums'].index(self.demons_info2['ref'])].p[0,0].A[1:,1:])
             self.frame1_pose.orientation.x, self.frame1_pose.orientation.y, self.frame1_pose.orientation.z, self.frame1_pose.orientation.w = r.as_quat()
 
         if (sqrt(self.frame2_pose.position.x**2 + self.frame2_pose.position.y**2 + self.frame2_pose.position.z**2) == 0):
@@ -176,7 +180,7 @@ class TPGMM:
             clkd_point = rospy.wait_for_message("/clicked_point", PointStamped)
             self.frame2_pose.position = clkd_point.point
             # TODO: Add .orientation after adding rotMat2Quat() function
-            r = R.from_matrix(self.slist[int(self.demons_info2['ref'][-1])-1].p[1,0].A[1:,1:])
+            r = R.from_matrix(self.slist[self.demons_info2['demons_nums'].index(self.demons_info2['ref'])].p[1,0].A[1:,1:])
             self.frame2_pose.orientation.x, self.frame2_pose.orientation.y, self.frame2_pose.orientation.z, self.frame2_pose.orientation.w = r.as_quat()
 
 
