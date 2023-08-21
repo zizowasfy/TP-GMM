@@ -36,8 +36,12 @@ class TPGMM:
         self.demonsToSamples()
 
     def startTPGMM(self, req):
-        
+
         ## Receiving service Request
+        # if rospy.has_param("/task_param"):
+        #     self.task_name = rospy.get_param("/task_param")
+        #     print("/task_param: ", self.task_name)
+        # else:
         self.task_name = req.task_name
         self.frame1_pose = req.start_pose
         self.frame2_pose = req.goal_pose
@@ -90,12 +94,9 @@ class TPGMM:
         self.slist = []
         for i in range(self.nbSamples):
             pmat = np.empty(shape=(self.nbFrames, self.nbData), dtype=object)
-            # tempData = np.loadtxt('sample' + str(i + 1) + '_Data.txt', delimiter=',')
             tempData = np.loadtxt(data_dir + demons_nums[i] + '_sample' + '_Data.txt', delimiter=',')
             print(tempData.shape)
             for j in range(self.nbFrames):
-                # tempA = np.loadtxt('sample' + str(i + 1) + '_frame' + str(j + 1) + '_A.txt', delimiter=',')
-                # tempB = np.loadtxt('sample' + str(i + 1) + '_frame' + str(j + 1) + '_b.txt', delimiter=',')
                 tempA = np.loadtxt(data_dir + demons_nums[i] + '_sample' + '_frame' + str(j + 1) + '_A.txt', delimiter=',')
                 tempB = np.loadtxt(data_dir + demons_nums[i] + '_sample' + '_frame' + str(j + 1) + '_b.txt', delimiter=',')
 
@@ -113,25 +114,6 @@ class TPGMM:
         self.tpGMMGMR()
 
     def tpGMMGMR(self):
-        # # Reproduction for parameters used in demonstration------------------------------------------------------------------- #
-        # self.rdemolist = []
-        # for n in range(self.nbSamples):
-        #     self.rdemolist.append(self.TPGMMGMR.reproduce(self.slist[n].p, self.slist[n].Data[1:self.nbVar,0]))
-        #     print(self.rdemolist[n].Mu.shape)
-        #     print(self.rdemolist[n].Sigma.shape)
-
-        # # Reproduction with generated parameters------------------------------------------------------------------------------ #
-        # self.rnewlist = []
-        # for n in range(self.nbSamples):
-        #     newP = deepcopy(self.slist[n].p)
-        #     for m in range(1, self.nbFrames):
-        #         bTransform = np.random.rand(self.nbVar, 1) + 0.5
-        #         aTransform = np.random.rand(self.nbVar, self.nbVar) +0.5
-        #         for k in range(self.nbData):
-        #             newP[m, k].A = newP[m, k].A * aTransform
-        #             newP[m, k].b = newP[m, k].b * bTransform
-        #     self.rnewlist.append(self.TPGMMGMR.reproduce(newP, self.slist[n].Data[1:self.nbVar, 0]))
-
         # Reproduction with generated parameters------------------------------------------------------------------------------ #
         self.getFramePoses()
         newP = deepcopy(self.slist[self.demons_info2['demons_nums'].index(self.demons_info2['ref'])].p)
@@ -140,20 +122,20 @@ class TPGMM:
         newb1 = np.array([[0], [self.frame1_pose.position.x], [self.frame1_pose.position.y], [self.frame1_pose.position.z]], dtype=object)
         newb2 = np.array([[0], [self.frame2_pose.position.x], [self.frame2_pose.position.y], [self.frame2_pose.position.z]], dtype=object)
 
-        print([self.frame1_pose.orientation.x, self.frame1_pose.orientation.y, self.frame1_pose.orientation.z, self.frame1_pose.orientation.w])
+        # print([self.frame1_pose.orientation.x, self.frame1_pose.orientation.y, self.frame1_pose.orientation.z, self.frame1_pose.orientation.w])
         rA1 = R.from_quat([self.frame1_pose.orientation.x, self.frame1_pose.orientation.y, self.frame1_pose.orientation.z, self.frame1_pose.orientation.w])
         rA2 = R.from_quat([self.frame2_pose.orientation.x, self.frame2_pose.orientation.y, self.frame2_pose.orientation.z, self.frame2_pose.orientation.w])
         newA1 = np.vstack(( np.array([1,0,0,0]), np.hstack(( np.zeros((3,1)), rA1.as_matrix() )) )) # TODO: Quat2rotMat
         newA2 = np.vstack(( np.array([1,0,0,0]), np.hstack(( np.zeros((3,1)), rA2.as_matrix() )) )) # TODO: Quat2rotMat
-        print(newA1)
-        print(newb1)
+        # print(newA1)
+        # print(newb1)
         for k in range(self.nbData):
             newP[0, k].b = newb1
             newP[1, k].b = newb2            
             newP[0, k].A = newA1
             newP[1, k].A = newA2
-            newP[0, k].invA = np.linalg.pinv(newA1)
-            newP[1, k].invA = np.linalg.pinv(newA2)
+            newP[0, k].invA = np.linalg.pinv(newA1) # TOTRY: with and without invA
+            newP[1, k].invA = np.linalg.pinv(newA2) # TOTRY: with and without invA
 
         rnew = self.TPGMMGMR.reproduce(newP, newb1[1:,:])
 
@@ -182,51 +164,6 @@ class TPGMM:
             # TODO: Add .orientation after adding rotMat2Quat() function
             r = R.from_matrix(self.slist[self.demons_info2['demons_nums'].index(self.demons_info2['ref'])].p[1,0].A[1:,1:])
             self.frame2_pose.orientation.x, self.frame2_pose.orientation.y, self.frame2_pose.orientation.z, self.frame2_pose.orientation.w = r.as_quat()
-
-
-    # def tpGMMPlot(self):
-    #     # Plotting------------------------------------------------------------------------------------------------------------ #
-    #     xaxis = 1
-    #     yaxis = 3
-    #     xlim = [-0.3, 0.8]
-    #     ylim = [-0.2, 0.8]
-
-    #     # Demos--------------------------------------------------------------------------------------------------------------- #
-    #     fig = plt.figure()
-    #     ax1 = fig.add_subplot(131)
-    #     ax1.set_xlim(xlim)
-    #     ax1.set_ylim(ylim)
-    #     ax1.set_aspect(abs(xlim[1]-xlim[0])/abs(ylim[1]-ylim[0]))
-    #     plt.title('Demonstrations')
-    #     for n in range(self.nbSamples):
-    #         for m in range(self.nbFrames):
-    #             ax1.plot([self.slist[n].p[m,0].b[xaxis,0], self.slist[n].p[m,0].b[xaxis,0] + self.slist[n].p[m,0].A[xaxis,yaxis]], [self.slist[n].p[m,0].b[yaxis,0], self.slist[n].p[m,0].b[yaxis,0] + self.slist[n].p[m,0].A[yaxis,yaxis]], lw = 3, color = [0,1,m])
-    #             ax1.plot(self.slist[n].p[m,0].b[xaxis,0], self.slist[n].p[m,0].b[yaxis,0], ms = 10, marker = '.', color = [0,1,m])
-    #         ax1.plot(self.slist[n].Data[xaxis,0], self.slist[n].Data[yaxis,0], marker = '.', ms = 15)
-    #         ax1.plot(self.slist[n].Data[xaxis,:], self.slist[n].Data[yaxis,:])
-
-    #     # Reproductions with training parameters------------------------------------------------------------------------------ #
-    #     ax2 = fig.add_subplot(132)
-    #     ax2.set_xlim(xlim)
-    #     ax2.set_ylim(ylim)
-    #     ax2.set_aspect(abs(xlim[1]-xlim[0])/abs(ylim[1]-ylim[0]))
-    #     plt.title('Reproductions with same task parameters')
-    #     for n in range(self.nbSamples):
-    #         self.TPGMMGMR.plotReproduction(self.rdemolist[n], xaxis, yaxis, ax2, showGaussians=True)
-
-    #     # Reproductions with new parameters----------------------------------------------------------------------------------- #
-    #     ax3 = fig.add_subplot(133)
-    #     ax3.set_xlim(xlim)
-    #     ax3.set_ylim(ylim)
-    #     ax3.set_aspect(abs(xlim[1]-xlim[0])/abs(ylim[1]-ylim[0]))
-    #     plt.title('Reproduction with generated task parameters')
-    #     for n in range(self.nbSamples):
-    #         self.TPGMMGMR.plotReproduction(self.rnewlist[n], xaxis, yaxis, ax3, showGaussians=True)
-
-    #     print("ProductionMatrix:")
-    #     print(self.TPGMMGMR.getReproductionMatrix(self.rnewlist[0]))
-
-    #     plt.show()
 
 if __name__ == "__main__":
 

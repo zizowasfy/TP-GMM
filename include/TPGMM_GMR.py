@@ -52,6 +52,7 @@ class TPGMM_GMR(object):
             g.covariances = np.ravel(r.Sigma[:,:,gaus,-1])
             gmm.gaussians.append(copy.deepcopy(g))
         gmm.weights = self.model.Priors # or r.H
+        gmm.bic = r.Data.shape[1]
 
         ## Writing to rosbag
         wbag = rosbag.Bag("/home/zizo/haptics-ctrl_ws/src/tp_gmm/data/tpgmm_mix.bag", 'w')
