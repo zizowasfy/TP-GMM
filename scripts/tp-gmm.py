@@ -30,10 +30,13 @@ class TPGMM:
         rospy.init_node("tp_gmm_node")
         print(" --> Node tp_gmm_node is initialized")
         rospy.Service("StartTPGMM_service", StartTPGMM, self.startTPGMM)
+        rospy.Service("ReproduceTPGMM_service", ReproduceTPGMM, self.tpGMMGMR)
+
         self.tpgmm_pub = rospy.Publisher('/gmm/mix', GaussianMixture, queue_size=1)
 
         self.demonsToSamples_flag = False   
         self.demonsToSamples()
+
 
     def startTPGMM(self, req):
 
@@ -42,10 +45,12 @@ class TPGMM:
         #     self.task_name = rospy.get_param("/task_param")
         #     print("/task_param: ", self.task_name)
         # else:
-        self.task_name = req.task_name
-        self.frame1_pose = req.start_pose
-        self.frame2_pose = req.goal_pose
-
+        # self.task_name = req.task_name
+        # self.frame1_pose = req.start_pose
+        # self.frame2_pose = req.goal_pose
+        self.frame1_pose = Pose()
+        self.frame2_pose = Pose()        
+        self.task_name = rospy.get_param("/task_param")
         ## Fetching Samples and paramters
         self.demonsToSamples_flag = True
         print("startTPGMM")
@@ -61,7 +66,7 @@ class TPGMM:
         self.nbSamples = self.demons_info2['nbDemons']  # nb of demonstrations
         self.nbVar = 4      # Dim !!
         self.nbFrames = 2 
-        self.nbStates = 5   # nb of Gaussians
+        self.nbStates = 2   # nb of Gaussians
         self.nbData = self.demons_info2['ref_nbpoints']-1
 
         self.tpGMM()
@@ -111,10 +116,12 @@ class TPGMM:
         # Learning the model-------------------------------------------------------------------------------------------------- #
         self.TPGMMGMR.fit(self.slist)
         
-        self.tpGMMGMR()
+        # self.tpGMMGMR()
 
-    def tpGMMGMR(self):
+    def tpGMMGMR(self, req): # TODO for tomorrow (6/9/2023): complete the req by assigning the values to frame_pose1&2
         # Reproduction with generated parameters------------------------------------------------------------------------------ #
+        self.frame1_pose = req.start_pose.pose
+        self.frame2_pose = req.goal_pose.pose         
         self.getFramePoses()
         newP = deepcopy(self.slist[self.demons_info2['demons_nums'].index(self.demons_info2['ref'])].p)
         print("self.demons_info2['demons_nums'].index(self.demons_info2['ref']) = ", self.demons_info2['demons_nums'].index(self.demons_info2['ref']))
@@ -146,6 +153,7 @@ class TPGMM:
         print("GMM is Published!")
         # self.tpGMMPlot()
         # rospy.signal_shutdown("TP-GMM Node is Shutting Down!")
+        return ReproduceTPGMMResponse()
 
     ## Check if frame1_pose and frame2_pose hasn't been requested from startTPGMM rosservice, fill them with these values
     def getFramePoses(self):
