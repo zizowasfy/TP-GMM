@@ -66,7 +66,7 @@ class TPGMM:
         self.nbSamples = self.demons_info2['nbDemons']  # nb of demonstrations
         self.nbVar = 4      # Dim !!
         self.nbFrames = 2 
-        self.nbStates = 2   # nb of Gaussians
+        self.nbStates = 3  # nb of Gaussians
         self.nbData = self.demons_info2['ref_nbpoints']-1
 
         self.tpGMM()
