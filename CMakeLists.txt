@@ -10,6 +10,7 @@ project(tp_gmm)
 find_package(catkin REQUIRED COMPONENTS
   rospy
   geometry_msgs
+  sensor_msgs
   message_generation
 )
 
@@ -71,6 +72,7 @@ add_service_files(
 generate_messages(
   DEPENDENCIES
   geometry_msgs
+  sensor_msgs
   # std_msgs  # Or other packages containing msgs
 )
 

@@ -2,6 +2,7 @@
 # ROS stuff
 import rospy
 from geometry_msgs.msg import Pose, PointStamped
+from sensor_msgs.msg import JointState
 from gaussian_mixture_model.msg import GaussianMixture
 from tp_gmm.srv import *
 
@@ -64,9 +65,9 @@ class TPGMM:
 
         ## Initialization of parameters and properties------------------------------------------------------------------------- #
         self.nbSamples = self.demons_info2['nbDemons']  # nb of demonstrations
-        self.nbVar = 4      # Dim !!
+        self.nbVar = 8      # Dim !!
         self.nbFrames = 2 
-        self.nbStates = 3  # nb of Gaussians
+        self.nbStates = 5  # nb of Gaussians
         self.nbData = self.demons_info2['ref_nbpoints']-1
 
         self.tpGMM()
@@ -118,31 +119,60 @@ class TPGMM:
         
         # self.tpGMMGMR()
 
-    def tpGMMGMR(self, req): # TODO for tomorrow (6/9/2023): complete the req by assigning the values to frame_pose1&2
+    # def tpGMMGMR(self, req):
+    #     # Reproduction with generated parameters------------------------------------------------------------------------------ #
+    #     self.frame1_pose = req.start_pose.pose
+    #     self.frame2_pose = req.goal_pose.pose         
+    #     self.getFramePoses()
+    #     newP = deepcopy(self.slist[self.demons_info2['demons_nums'].index(self.demons_info2['ref'])].p)
+    #     print("self.demons_info2['demons_nums'].index(self.demons_info2['ref']) = ", self.demons_info2['demons_nums'].index(self.demons_info2['ref']))
+    #     # newP = p(np.zeros((self.nbVar,self.nbVar)), np.zeros((self.nbVar,1)), np.zeros((self.nbVar,self.nbVar)), self.nbStates)
+    #     newb1 = np.array([[0], [self.frame1_pose.position.x], [self.frame1_pose.position.y], [self.frame1_pose.position.z]], dtype=object)
+    #     newb2 = np.array([[0], [self.frame2_pose.position.x], [self.frame2_pose.position.y], [self.frame2_pose.position.z]], dtype=object)
+
+    #     # print([self.frame1_pose.orientation.x, self.frame1_pose.orientation.y, self.frame1_pose.orientation.z, self.frame1_pose.orientation.w])
+    #     rA1 = R.from_quat([self.frame1_pose.orientation.x, self.frame1_pose.orientation.y, self.frame1_pose.orientation.z, self.frame1_pose.orientation.w])
+    #     rA2 = R.from_quat([self.frame2_pose.orientation.x, self.frame2_pose.orientation.y, self.frame2_pose.orientation.z, self.frame2_pose.orientation.w])
+    #     newA1 = np.vstack(( np.array([1,0,0,0]), np.hstack(( np.zeros((3,1)), rA1.as_matrix() )) )) # TODO: Quat2rotMat
+    #     newA2 = np.vstack(( np.array([1,0,0,0]), np.hstack(( np.zeros((3,1)), rA2.as_matrix() )) )) # TODO: Quat2rotMat
+    #     # print(newA1)
+    #     # print(newb1)
+    #     for k in range(self.nbData):
+    #         newP[0, k].b = newb1
+    #         newP[1, k].b = newb2            
+    #         newP[0, k].A = newA1
+    #         newP[1, k].A = newA2
+    #         newP[0, k].invA = np.linalg.pinv(newA1) # TOTRY: with and without invA
+    #         newP[1, k].invA = np.linalg.pinv(newA2) # TOTRY: with and without invA
+
+    #     rnew = self.TPGMMGMR.reproduce(newP, newb1[1:,:])
+
+    #     # Saving GMM to rosbag ------------------------------------------------------------------------------------------------------------ #
+    #     gmm = self.TPGMMGMR.convertToGM(rnew)
+
+    #     self.tpgmm_pub.publish(gmm)
+    #     print("GMM is Published!")
+    #     # self.tpGMMPlot()
+    #     # rospy.signal_shutdown("TP-GMM Node is Shutting Down!")
+    #     return ReproduceTPGMMResponse()
+
+    # Joint Space tpgmm model
+    def tpGMMGMR(self, req):
         # Reproduction with generated parameters------------------------------------------------------------------------------ #
-        self.frame1_pose = req.start_pose.pose
-        self.frame2_pose = req.goal_pose.pose         
-        self.getFramePoses()
+        self.frame1_joints = req.start_joints.position
+        self.frame2_joints = req.goal_joints.position
+        self.frame1_joints = np.expand_dims(np.array(self.frame1_joints), axis=1)
+        self.frame2_joints = np.expand_dims(np.array(self.frame2_joints), axis=1)
+        # self.getFramePoses()
         newP = deepcopy(self.slist[self.demons_info2['demons_nums'].index(self.demons_info2['ref'])].p)
         print("self.demons_info2['demons_nums'].index(self.demons_info2['ref']) = ", self.demons_info2['demons_nums'].index(self.demons_info2['ref']))
         # newP = p(np.zeros((self.nbVar,self.nbVar)), np.zeros((self.nbVar,1)), np.zeros((self.nbVar,self.nbVar)), self.nbStates)
-        newb1 = np.array([[0], [self.frame1_pose.position.x], [self.frame1_pose.position.y], [self.frame1_pose.position.z]], dtype=object)
-        newb2 = np.array([[0], [self.frame2_pose.position.x], [self.frame2_pose.position.y], [self.frame2_pose.position.z]], dtype=object)
-
-        # print([self.frame1_pose.orientation.x, self.frame1_pose.orientation.y, self.frame1_pose.orientation.z, self.frame1_pose.orientation.w])
-        rA1 = R.from_quat([self.frame1_pose.orientation.x, self.frame1_pose.orientation.y, self.frame1_pose.orientation.z, self.frame1_pose.orientation.w])
-        rA2 = R.from_quat([self.frame2_pose.orientation.x, self.frame2_pose.orientation.y, self.frame2_pose.orientation.z, self.frame2_pose.orientation.w])
-        newA1 = np.vstack(( np.array([1,0,0,0]), np.hstack(( np.zeros((3,1)), rA1.as_matrix() )) )) # TODO: Quat2rotMat
-        newA2 = np.vstack(( np.array([1,0,0,0]), np.hstack(( np.zeros((3,1)), rA2.as_matrix() )) )) # TODO: Quat2rotMat
-        # print(newA1)
-        # print(newb1)
+        newb1 = np.vstack( ([0], self.frame1_joints) )
+        newb2 = np.vstack( ([0], self.frame2_joints) )
+        
         for k in range(self.nbData):
             newP[0, k].b = newb1
-            newP[1, k].b = newb2            
-            newP[0, k].A = newA1
-            newP[1, k].A = newA2
-            newP[0, k].invA = np.linalg.pinv(newA1) # TOTRY: with and without invA
-            newP[1, k].invA = np.linalg.pinv(newA2) # TOTRY: with and without invA
+            newP[1, k].b = newb2
 
         rnew = self.TPGMMGMR.reproduce(newP, newb1[1:,:])
 

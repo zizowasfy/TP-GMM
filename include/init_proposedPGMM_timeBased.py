@@ -2,7 +2,7 @@ import numpy as np
 def init_proposedPGMM_timeBased(s, modelcur):
     from refClass import ref
     from modelClass import model
-    diagRegularizationFactor = 0.01 # The smaller this number, the bigger the Gaussians will be
+    diagRegularizationFactor = 0.0001 # Note to myself: The smaller this number, the smaller the Gaussians will be
     nbSamples = len(s)
     DataTotalSize = 0
     for i in range(0, len(s)):
@@ -12,6 +12,12 @@ def init_proposedPGMM_timeBased(s, modelcur):
         DataTmp = np.ndarray(shape=(np.shape(s[0].Data)[0], 0))
         for j in range (0, nbSamples):
             for k in range (0, s[j].nbData):
+                # print("np.dot(s[j].p[i, k].invA ", s[j].p[i, k].invA.shape)
+                # print("s[j].Data[:, k] ", s[j].Data[:, k].shape)
+                # print("(s[0].Data)[0] ", (s[0].Data)[0].shape)
+                # print("s[j].p[i, k].b ", s[j].p[i, k].b.shape)
+                # print("(s[0].Data)[0] ", (s[0].Data)[0].shape)
+                # print(DataTmp.shape)
                 # print(np.shape(np.dot(s[j].p[i, k].invA, (np.reshape(s[j].Data[:, k], newshape=(np.shape(s[0].Data)[0], 1)) - np.reshape(s[j].p[i, k].b, newshape=(np.shape(s[0].Data)[0], 1))))))
                 DataTmp = np.append(DataTmp, np.dot(s[j].p[i,k].invA,(np.reshape(s[j].Data[:,k], newshape = (np.shape(s[0].Data)[0],1))-np.reshape(s[j].p[i, k].b, newshape=(np.shape(s[0].Data)[0], 1)))), axis = 1)
         DataAll = np.append(DataAll, DataTmp, axis=0)
