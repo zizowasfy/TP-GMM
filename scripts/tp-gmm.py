@@ -24,6 +24,7 @@ from pClass import p
 from matplotlib import pyplot as plt
 from TPGMM_GMR import TPGMM_GMR
 from copy import deepcopy,copy
+from data_handle.srv import GetJacobian
 
 class TPGMM:
     def __init__(self):
@@ -67,7 +68,7 @@ class TPGMM:
         self.nbSamples = self.demons_info2['nbDemons']  # nb of demonstrations
         self.nbVar = 8      # Dim !!
         self.nbFrames = 2 
-        self.nbStates = 5  # nb of Gaussians
+        self.nbStates = 3  # nb of Gaussians
         self.nbData = self.demons_info2['ref_nbpoints']-1
 
         self.tpGMM()
@@ -159,20 +160,52 @@ class TPGMM:
     # Joint Space tpgmm model
     def tpGMMGMR(self, req):
         # Reproduction with generated parameters------------------------------------------------------------------------------ #
-        self.frame1_joints = req.start_joints.position
-        self.frame2_joints = req.goal_joints.position
-        self.frame1_joints = np.expand_dims(np.array(self.frame1_joints), axis=1)
-        self.frame2_joints = np.expand_dims(np.array(self.frame2_joints), axis=1)
+        # self.frame1_joints = req.start_joints.position
+        # self.frame2_joints = req.goal_joints.position
+        # self.frame1_joints = np.expand_dims(np.array(self.frame1_joints), axis=1)
+        # self.frame2_joints = np.expand_dims(np.array(self.frame2_joints), axis=1)
         # self.getFramePoses()
+        
         newP = deepcopy(self.slist[self.demons_info2['demons_nums'].index(self.demons_info2['ref'])].p)
         print("self.demons_info2['demons_nums'].index(self.demons_info2['ref']) = ", self.demons_info2['demons_nums'].index(self.demons_info2['ref']))
         # newP = p(np.zeros((self.nbVar,self.nbVar)), np.zeros((self.nbVar,1)), np.zeros((self.nbVar,self.nbVar)), self.nbStates)
-        newb1 = np.vstack( ([0], self.frame1_joints) )
-        newb2 = np.vstack( ([0], self.frame2_joints) )
-        
+        # newb1 = np.vstack( ([0], self.frame1_joints) )
+        # newb2 = np.vstack( ([0], self.frame2_joints) )
+        get_jacobian_client = rospy.ServiceProxy("/get_jacobian_service", GetJacobian)
+        resp = get_jacobian_client() # Pass the recorded joints at each time-step#
+        # Converting all service data into one column numpy array and/or Matrices
+        joint_positions_frame1 = np.expand_dims(np.array(resp.joint_positions_frame1.position), axis=1)
+        joint_positions_frame2 = np.expand_dims(np.array(resp.joint_positions_frame2.position), axis=1)
+        pose_frame1 = np.expand_dims(np.array(resp.pose_frame1), axis=1)
+        pose_frame2 = np.expand_dims(np.array(resp.pose_frame2), axis=1)
+        jacobian_mat_frame1 = np.reshape(np.array(resp.jacobian_vec_frame1), (7,7))
+        jacobian_mat_frame2 = np.reshape(np.array(resp.jacobian_vec_frame2), (7,7))
+        jacobian_pinv_frame1 = np.linalg.pinv(jacobian_mat_frame1)
+        jacobian_pinv_frame2 = np.linalg.pinv(jacobian_mat_frame2)
+
+        print(joint_positions_frame1.shape)
+        print(joint_positions_frame2.shape)
+        print(pose_frame1.shape)
+        print(pose_frame2.shape)
+        print(jacobian_pinv_frame1.shape)
+        print(jacobian_pinv_frame2.shape)
+
+        print(jacobian_pinv_frame1@pose_frame1)
+        newb1 = np.vstack( ([0], joint_positions_frame1 - jacobian_pinv_frame1@pose_frame1) )
+        newb2 = np.vstack( ([0], joint_positions_frame2 - jacobian_pinv_frame2@pose_frame2) )
+        # newA1 = jacobian_pinv_frame1
+        # newA2 = jacobian_pinv_frame2
+        newA1 = np.vstack(( np.array([1,0,0,0,0,0,0,0]), np.hstack(( np.zeros((7,1)), jacobian_pinv_frame1 )) ))
+        newA2 = np.vstack(( np.array([1,0,0,0,0,0,0,0]), np.hstack(( np.zeros((7,1)), jacobian_pinv_frame2 )) ))
+
         for k in range(self.nbData):
             newP[0, k].b = newb1
             newP[1, k].b = newb2
+            newP[0, k].A = newA1
+            newP[1, k].A = newA2
+            newP[0, k].invA = np.linalg.pinv(newA1)
+            newP[1, k].invA = np.linalg.pinv(newA2)
+            
 
         rnew = self.TPGMMGMR.reproduce(newP, newb1[1:,:])
 
