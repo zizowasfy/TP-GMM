@@ -66,9 +66,9 @@ class TPGMM:
 
         ## Initialization of parameters and properties------------------------------------------------------------------------- #
         self.nbSamples = self.demons_info2['nbDemons']  # nb of demonstrations
-        self.nbVar = 8      # Dim !!
+        self.nbVar = 4      # Dim !!
         self.nbFrames = 2 
-        self.nbStates = 3  # nb of Gaussians
+        self.nbStates = 1  # nb of Gaussians
         self.nbData = self.demons_info2['ref_nbpoints']-1
 
         self.tpGMM()
@@ -120,31 +120,157 @@ class TPGMM:
         
         # self.tpGMMGMR()
 
+    def tpGMMGMR(self, req):
+        # Reproduction with generated parameters------------------------------------------------------------------------------ #
+        self.frame1_pose = req.start_pose.pose
+        self.frame2_pose = req.goal_pose.pose         
+        # self.getFramePoses()
+        newP = deepcopy(self.slist[self.demons_info2['demons_nums'].index(self.demons_info2['ref'])].p)
+        print("self.demons_info2['demons_nums'].index(self.demons_info2['ref']) = ", self.demons_info2['demons_nums'].index(self.demons_info2['ref']))
+        # newP = p(np.zeros((self.nbVar,self.nbVar)), np.zeros((self.nbVar,1)), np.zeros((self.nbVar,self.nbVar)), self.nbStates)
+        newb1 = np.array([[0], [self.frame1_pose.position.x], [self.frame1_pose.position.y], [self.frame1_pose.position.z]], dtype=object)
+        newb2 = np.array([[0], [self.frame2_pose.position.x], [self.frame2_pose.position.y], [self.frame2_pose.position.z]], dtype=object)
+
+        # print([self.frame1_pose.orientation.x, self.frame1_pose.orientation.y, self.frame1_pose.orientation.z, self.frame1_pose.orientation.w])
+        rA1 = R.from_quat([self.frame1_pose.orientation.x, self.frame1_pose.orientation.y, self.frame1_pose.orientation.z, self.frame1_pose.orientation.w])
+        rA2 = R.from_quat([self.frame2_pose.orientation.x, self.frame2_pose.orientation.y, self.frame2_pose.orientation.z, self.frame2_pose.orientation.w])
+        newA1 = np.vstack(( np.array([1,0,0,0]), np.hstack(( np.zeros((3,1)), rA1.as_matrix() )) )) # TODO: Quat2rotMat
+        newA2 = np.vstack(( np.array([1,0,0,0]), np.hstack(( np.zeros((3,1)), rA2.as_matrix() )) )) # TODO: Quat2rotMat
+        # print(newA1)
+        # print(newb1)
+        for k in range(self.nbData):
+            newP[0, k].b = newb1
+            newP[1, k].b = newb2            
+            newP[0, k].A = newA1
+            newP[1, k].A = newA2
+            newP[0, k].invA = np.linalg.pinv(newA1) # TOTRY: with and without invA
+            newP[1, k].invA = np.linalg.pinv(newA2) # TOTRY: with and without invA
+
+        rnew = self.TPGMMGMR.reproduce(newP, newb1[1:,:])
+        print("rnew ReproductionMatrix: ", self.TPGMMGMR.getReproductionMatrix(rnew).shape)
+
+        # Saving GMM to rosbag ------------------------------------------------------------------------------------------------------------ #
+        # gmm = self.TPGMMGMR.convertToGM(rnew)
+
+        # Cartesian Space to Joint Space Transformation ----------------------------------------------------------------------------------- #
+        # solving IK using jacobian-based
+        q_jointstate = JointState()
+        get_jacobian_client = rospy.ServiceProxy("/get_jacobian_service", GetJacobian)
+        resp = get_jacobian_client(True, None)
+        # q_0 = np.expand_dims(np.array(resp.q_0.position), axis=1) # start joint configuration
+        q_0 = np.array(resp.q_0.position) # start joint configuration
+        print("q_0: ", q_0)
+        # q_0 = np.vstack(np.zeros(1), q_0)
+        q_i = deepcopy(q_0) # q_(t-1)
+        q_t = np.zeros((q_0.shape[0],rnew.Data.shape[1]))
+        print("q_t.shape: ", q_t.shape)
+        print("q_t[:,0].shape: ", q_t[:,0].shape)
+        q_t[:,0] = q_0 # Initialize q_t with q_0
+        # qData = np.zeros((rnew.Data.shape))
+
+        # Mu and Covariance of the Joint Space
+        q_Mu = np.ndarray(shape=(7, rnew.Mu.shape[1], rnew.Mu.shape[2])) # rnew.Mu.shape)
+        q_Sigma = np.ndarray(shape=(7, 7, rnew.Sigma.shape[2], rnew.Sigma.shape[3])) # rnew.Sigma.shape)
+
+        inc = 4
+        for t in range(inc, rnew.Data.shape[1], inc):
+            # getJacobian
+            q_jointstate.position = q_t[:,t-inc]
+            get_jacobian_client = rospy.ServiceProxy("/get_jacobian_service", GetJacobian)
+            resp = get_jacobian_client(False, q_jointstate)
+            jacobian_mat = np.reshape(np.array(resp.jacobian_vec), (7,7)).T
+            print("jacobian_mat: ", jacobian_mat)
+            jacobian_pinv = np.linalg.pinv(jacobian_mat)
+            # compute IK
+            x_i = rnew.Data[1:,t-inc]# x_(t-1)
+            x_t = rnew.Data[1:,t]
+            # q_t[0,t] = t
+            # print("q_t[:,t].shape: ", q_t[:,t].shape)
+            q_t[:,t] = q_t[:,t-inc] + jacobian_pinv @ (np.append(x_t, np.zeros(4)) - np.append(x_i, np.zeros(4)))
+            print(q_t[:,t])
+
+            # Calculating the mean and covariance of the Joint Space after the transformation
+            rnew_Mu_i = rnew.Mu[1:,:,t-inc]
+            rnew_Mu_i = np.append(rnew_Mu_i, np.zeros(4))[:,np.newaxis] 
+            rnew_Mu_t = rnew.Mu[1:,:,t]
+            rnew_Mu_t = np.append(rnew_Mu_t, np.zeros(4))[:,np.newaxis]
+            rnew_Sigma_i = rnew.Sigma[1:,:,:,t-inc]
+            rnew_Sigma_t_temp = rnew.Sigma[1:,1:,:,t]
+            rnew_Sigma_t = np.zeros((7,7))
+            rnew_Sigma_t[:rnew_Sigma_t_temp.shape[0], :rnew_Sigma_t_temp.shape[1]] = np.squeeze(rnew_Sigma_t_temp)
+            
+            q_Mu[:,:,t] = q_t[:,t-inc][:,np.newaxis] + jacobian_pinv @ (rnew_Mu_t - rnew_Mu_i)
+            
+            # print("rnew_Sigma_t.shape: ", rnew_Sigma_t.shape)            
+            # print("jacobian_pinv.shape: ", jacobian_pinv.shape)
+            q_Sigma[:,:,:,t] = (jacobian_pinv @ rnew_Sigma_t @ jacobian_pinv.T)[:,:,np.newaxis]
+
+            print("t: ", t)
+
+
+        q_rnew = deepcopy(rnew)
+        q_rnew.Data = np.vstack((np.zeros((1,q_t.shape[1])), q_t))
+        q_rnew.Mu[1:,:,:] = q_Mu[:3,:,:]           # To keep the values of 1st Var in nbVar (which is time) the same as rnew
+        q_rnew.Sigma[1:,1:,:,:] = q_Sigma[:3,:3,:,:]
+
+        gmm = self.TPGMMGMR.convertToGM(q_rnew)
+
+        # Save and Publish reproduced TP-GMM  --------------------------------------------------------------------------------------------- #
+        self.tpgmm_pub.publish(gmm)
+        print("GMM is Published!")
+        # self.tpGMMPlot()
+        # rospy.signal_shutdown("TP-GMM Node is Shutting Down!")
+        return ReproduceTPGMMResponse()
+
+    # # Joint Space tpgmm model
     # def tpGMMGMR(self, req):
     #     # Reproduction with generated parameters------------------------------------------------------------------------------ #
-    #     self.frame1_pose = req.start_pose.pose
-    #     self.frame2_pose = req.goal_pose.pose         
-    #     self.getFramePoses()
+    #     # self.frame1_joints = req.start_joints.position
+    #     # self.frame2_joints = req.goal_joints.position
+    #     # self.frame1_joints = np.expand_dims(np.array(self.frame1_joints), axis=1)
+    #     # self.frame2_joints = np.expand_dims(np.array(self.frame2_joints), axis=1)
+    #     # self.getFramePoses()
+        
     #     newP = deepcopy(self.slist[self.demons_info2['demons_nums'].index(self.demons_info2['ref'])].p)
     #     print("self.demons_info2['demons_nums'].index(self.demons_info2['ref']) = ", self.demons_info2['demons_nums'].index(self.demons_info2['ref']))
     #     # newP = p(np.zeros((self.nbVar,self.nbVar)), np.zeros((self.nbVar,1)), np.zeros((self.nbVar,self.nbVar)), self.nbStates)
-    #     newb1 = np.array([[0], [self.frame1_pose.position.x], [self.frame1_pose.position.y], [self.frame1_pose.position.z]], dtype=object)
-    #     newb2 = np.array([[0], [self.frame2_pose.position.x], [self.frame2_pose.position.y], [self.frame2_pose.position.z]], dtype=object)
+    #     # newb1 = np.vstack( ([0], self.frame1_joints) )
+    #     # newb2 = np.vstack( ([0], self.frame2_joints) )
+    #     get_jacobian_client = rospy.ServiceProxy("/get_jacobian_service", GetJacobian)
+    #     resp = get_jacobian_client() # Pass the recorded joints at each time-step#
+    #     # Converting all service data into one column numpy array and/or Matrices
+    #     joint_positions_frame1 = np.expand_dims(np.array(resp.joint_positions_frame1.position), axis=1)
+    #     joint_positions_frame2 = np.expand_dims(np.array(resp.joint_positions_frame2.position), axis=1)
+    #     pose_frame1 = np.expand_dims(np.array(resp.pose_frame1), axis=1)
+    #     pose_frame2 = np.expand_dims(np.array(resp.pose_frame2), axis=1)
+    #     jacobian_mat_frame1 = np.reshape(np.array(resp.jacobian_vec_frame1), (7,7))
+    #     jacobian_mat_frame2 = np.reshape(np.array(resp.jacobian_vec_frame2), (7,7))
+    #     jacobian_pinv_frame1 = np.linalg.pinv(jacobian_mat_frame1)
+    #     jacobian_pinv_frame2 = np.linalg.pinv(jacobian_mat_frame2)
 
-    #     # print([self.frame1_pose.orientation.x, self.frame1_pose.orientation.y, self.frame1_pose.orientation.z, self.frame1_pose.orientation.w])
-    #     rA1 = R.from_quat([self.frame1_pose.orientation.x, self.frame1_pose.orientation.y, self.frame1_pose.orientation.z, self.frame1_pose.orientation.w])
-    #     rA2 = R.from_quat([self.frame2_pose.orientation.x, self.frame2_pose.orientation.y, self.frame2_pose.orientation.z, self.frame2_pose.orientation.w])
-    #     newA1 = np.vstack(( np.array([1,0,0,0]), np.hstack(( np.zeros((3,1)), rA1.as_matrix() )) )) # TODO: Quat2rotMat
-    #     newA2 = np.vstack(( np.array([1,0,0,0]), np.hstack(( np.zeros((3,1)), rA2.as_matrix() )) )) # TODO: Quat2rotMat
-    #     # print(newA1)
-    #     # print(newb1)
+    #     print(joint_positions_frame1.shape)
+    #     print(joint_positions_frame2.shape)
+    #     print(pose_frame1.shape)
+    #     print(pose_frame2.shape)
+    #     print(jacobian_pinv_frame1.shape)
+    #     print(jacobian_pinv_frame2.shape)
+
+    #     print(jacobian_pinv_frame1@pose_frame1)
+    #     newb1 = np.vstack( ([0], joint_positions_frame1 - jacobian_pinv_frame1@pose_frame1) )
+    #     newb2 = np.vstack( ([0], joint_positions_frame2 - jacobian_pinv_frame2@pose_frame2) )
+    #     # newA1 = jacobian_pinv_frame1
+    #     # newA2 = jacobian_pinv_frame2
+    #     newA1 = np.vstack(( np.array([1,0,0,0,0,0,0,0]), np.hstack(( np.zeros((7,1)), jacobian_pinv_frame1 )) ))
+    #     newA2 = np.vstack(( np.array([1,0,0,0,0,0,0,0]), np.hstack(( np.zeros((7,1)), jacobian_pinv_frame2 )) ))
+
     #     for k in range(self.nbData):
     #         newP[0, k].b = newb1
-    #         newP[1, k].b = newb2            
+    #         newP[1, k].b = newb2
     #         newP[0, k].A = newA1
     #         newP[1, k].A = newA2
-    #         newP[0, k].invA = np.linalg.pinv(newA1) # TOTRY: with and without invA
-    #         newP[1, k].invA = np.linalg.pinv(newA2) # TOTRY: with and without invA
+    #         newP[0, k].invA = np.linalg.pinv(newA1)
+    #         newP[1, k].invA = np.linalg.pinv(newA2)
+            
 
     #     rnew = self.TPGMMGMR.reproduce(newP, newb1[1:,:])
 
@@ -156,67 +282,6 @@ class TPGMM:
     #     # self.tpGMMPlot()
     #     # rospy.signal_shutdown("TP-GMM Node is Shutting Down!")
     #     return ReproduceTPGMMResponse()
-
-    # Joint Space tpgmm model
-    def tpGMMGMR(self, req):
-        # Reproduction with generated parameters------------------------------------------------------------------------------ #
-        # self.frame1_joints = req.start_joints.position
-        # self.frame2_joints = req.goal_joints.position
-        # self.frame1_joints = np.expand_dims(np.array(self.frame1_joints), axis=1)
-        # self.frame2_joints = np.expand_dims(np.array(self.frame2_joints), axis=1)
-        # self.getFramePoses()
-        
-        newP = deepcopy(self.slist[self.demons_info2['demons_nums'].index(self.demons_info2['ref'])].p)
-        print("self.demons_info2['demons_nums'].index(self.demons_info2['ref']) = ", self.demons_info2['demons_nums'].index(self.demons_info2['ref']))
-        # newP = p(np.zeros((self.nbVar,self.nbVar)), np.zeros((self.nbVar,1)), np.zeros((self.nbVar,self.nbVar)), self.nbStates)
-        # newb1 = np.vstack( ([0], self.frame1_joints) )
-        # newb2 = np.vstack( ([0], self.frame2_joints) )
-        get_jacobian_client = rospy.ServiceProxy("/get_jacobian_service", GetJacobian)
-        resp = get_jacobian_client() # Pass the recorded joints at each time-step#
-        # Converting all service data into one column numpy array and/or Matrices
-        joint_positions_frame1 = np.expand_dims(np.array(resp.joint_positions_frame1.position), axis=1)
-        joint_positions_frame2 = np.expand_dims(np.array(resp.joint_positions_frame2.position), axis=1)
-        pose_frame1 = np.expand_dims(np.array(resp.pose_frame1), axis=1)
-        pose_frame2 = np.expand_dims(np.array(resp.pose_frame2), axis=1)
-        jacobian_mat_frame1 = np.reshape(np.array(resp.jacobian_vec_frame1), (7,7))
-        jacobian_mat_frame2 = np.reshape(np.array(resp.jacobian_vec_frame2), (7,7))
-        jacobian_pinv_frame1 = np.linalg.pinv(jacobian_mat_frame1)
-        jacobian_pinv_frame2 = np.linalg.pinv(jacobian_mat_frame2)
-
-        print(joint_positions_frame1.shape)
-        print(joint_positions_frame2.shape)
-        print(pose_frame1.shape)
-        print(pose_frame2.shape)
-        print(jacobian_pinv_frame1.shape)
-        print(jacobian_pinv_frame2.shape)
-
-        print(jacobian_pinv_frame1@pose_frame1)
-        newb1 = np.vstack( ([0], joint_positions_frame1 - jacobian_pinv_frame1@pose_frame1) )
-        newb2 = np.vstack( ([0], joint_positions_frame2 - jacobian_pinv_frame2@pose_frame2) )
-        # newA1 = jacobian_pinv_frame1
-        # newA2 = jacobian_pinv_frame2
-        newA1 = np.vstack(( np.array([1,0,0,0,0,0,0,0]), np.hstack(( np.zeros((7,1)), jacobian_pinv_frame1 )) ))
-        newA2 = np.vstack(( np.array([1,0,0,0,0,0,0,0]), np.hstack(( np.zeros((7,1)), jacobian_pinv_frame2 )) ))
-
-        for k in range(self.nbData):
-            newP[0, k].b = newb1
-            newP[1, k].b = newb2
-            newP[0, k].A = newA1
-            newP[1, k].A = newA2
-            newP[0, k].invA = np.linalg.pinv(newA1)
-            newP[1, k].invA = np.linalg.pinv(newA2)
-            
-
-        rnew = self.TPGMMGMR.reproduce(newP, newb1[1:,:])
-
-        # Saving GMM to rosbag ------------------------------------------------------------------------------------------------------------ #
-        gmm = self.TPGMMGMR.convertToGM(rnew)
-
-        self.tpgmm_pub.publish(gmm)
-        print("GMM is Published!")
-        # self.tpGMMPlot()
-        # rospy.signal_shutdown("TP-GMM Node is Shutting Down!")
-        return ReproduceTPGMMResponse()
 
     ## Check if frame1_pose and frame2_pose hasn't been requested from startTPGMM rosservice, fill them with these values
     def getFramePoses(self):

@@ -54,6 +54,7 @@ class TPGMM_GMR(object):
         gmm.weights = self.model.Priors # or r.H
         gmm.bic = r.Data.shape[1]
 
+        # print("r.Mu[:,1,0] == r.Mu[:,1,-1]: ", r.Mu[:,1,0] == r.Mu[:,1,-1]) # debuging.
         ## Writing to rosbag
         wbag = rosbag.Bag("/home/zizo/haptics-ctrl_ws/src/tp_gmm/data/tpgmm_mix.bag", 'w')
         wbag.write("/gmm/mix", gmm)
