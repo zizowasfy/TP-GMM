@@ -18,6 +18,8 @@ from nbconvert.preprocessors import ExecutePreprocessor
 import pickle
 
 # tpgmm-related stuff
+# from numba import njit
+import time
 import numpy as np
 from math import sqrt
 from scipy.spatial.transform import Rotation as R
@@ -200,44 +202,58 @@ class TPGMM:
         q_Sigma = np.zeros((1+q_0.shape[0], 1+q_0.shape[0], self.nbStates))
         gauss_indx = np.zeros((self.nbStates))
 
-        inc = 8
+        for_start_time = time.time()
+        inc = 4
         for t in range(inc, rnew.Data.shape[1], inc):
+            # loop_time = time.time()
             # print("t: ", t)
             # getJacobian
             q_jointstate.position = q_t[:,t-inc]
-            get_jacobian_client = rospy.ServiceProxy("/get_jacobian_service", GetJacobian)
+            # srv_time = time.time()
+            # get_jacobian_client = rospy.ServiceProxy("/get_jacobian_service", GetJacobian)
             resp = get_jacobian_client(False, q_jointstate)
+            # print("... srv_time: ", time.time() - srv_time)
             # print("jacobian_vec = ", resp.jacobian_vec)
             # jacobian_mat = np.reshape(np.array(resp.jacobian_vec), (6,7), order='C') # row-major order
             # print("jacobian_mat_row: ", jacobian_mat)
             jacobian_mat = np.reshape(np.array(resp.jacobian_vec), (7,7), order='F') # col-major order
             jacobian_mat = jacobian_mat[:3,:]
             # print("jacobian_mat: ", jacobian_mat)
+            # jacob_pinv_time = time.time()
             jacobian_pinv = np.linalg.pinv(jacobian_mat)
+            # print("... jacob_pinv_time: ", time.time() - jacob_pinv_time)
             # print("jacobian_pinv.shape: ",jacobian_pinv.shape)
 
             # compute IK
             x_i = rnew.Data[1:,t-inc] # x_(t-1)
             x_t = rnew.Data[1:,t]
+            # q_t_time = time.time()
             q_t[:,t] = q_t[:,t-inc] + jacobian_pinv @ (np.array(x_t) - np.array(x_i)) #(np.append(x_t, np.zeros(4)) - np.append(x_i, np.zeros(4)))
-            
+            # print("... q_t_time: ", time.time() - q_t_time)
+
             # Getting the Gaussians' means in joint space
+            # innerloop_time = time.time()
             for g in range(self.nbStates):
                 if (np.linalg.norm(np.array([rnew.Mu[1:,g,-1]]) - np.array([rnew.Data[1:,t]])) < 0.001):
                     q_Mu[:,g] = q_t[:,t]
+                    # q_Sigma_time = time.time()
                     q_Sigma[1:,1:,g] = jacobian_pinv @ rnew.Sigma[1:,1:,g,t] @ jacobian_pinv.T
+                    # print(".. q_Sigma_time: ", time.time() - q_Sigma_time)
                     # q_Sigma = np.vstack(( np.array([1, np.zeros(q_0.shape[0])]), np.hstack(( np.zeros(q_0.shape[0],1), q_Sigma[1:,1:,g] )) ))
                     # q_Sigma[0,:,g] = np.hstack( (np.ones((1,1)), np.zeros((1, q_0.shape[0]))) )
                     # q_Sigma[1:,0,g] = np.zeros( q_0.shape[0] )
                     # print("q_Mu: ", q_Mu)
                     gauss_indx[g] = t
                     # print("gaus_indx: ", gauss_indx)
-            
+            # print("... innerloop_time: ", time.time() - innerloop_time)
+
             # For Visualization of jacobian-based IK trajectory solution in RViz
             jointtrajectorypoint_q_viz.positions = q_t[:,t]
             move_group_q_viz.result.planned_trajectory.joint_trajectory.points.append(deepcopy(jointtrajectorypoint_q_viz))
             #/ For Visualization of jacobian-based IK trajectory solution in RViz
-
+            # print("... loop_time: ", time.time() - loop_time)
+        print("... for_start_time: ", time.time() - for_start_time)
+        
 
         # print("q_Mu: ", q_Mu)
         q_nbData = int(self.nbData/inc)
@@ -248,7 +264,7 @@ class TPGMM:
         for g in range(self.nbStates):
             time_var = np.arange(inc, gauss_indx[g], inc)[np.newaxis, :]
             # print("time_var: ", time_var.shape)
-            print(np.arange(inc, gauss_indx[g], inc))
+            # print(np.arange(inc, gauss_indx[g], inc))
             q_var = q_t[:,np.arange(inc, int(gauss_indx[g]), inc)]
             # print("q_var: ", q_var.shape)
             vars = np.vstack((time_var, q_var))
