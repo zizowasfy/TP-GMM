@@ -178,7 +178,9 @@ class TPGMM:
         #/ Debugging
         
         # Saving GMM to rosbag ------------------------------------------------------------------------------------------------------------ #
-        gmm = self.TPGMMGMR.convertToGM(rnew)
+        # gmm = self.TPGMMGMR.convertToGM(rnew)
+        # self.tpgmm_pub.publish(gmm)
+        print("GMM is Published!")
 
         # Cartesian Space to Joint Space Transformation ----------------------------------------------------------------------------------- #
         move_group_q_viz = MoveGroupActionResult()
@@ -187,28 +189,20 @@ class TPGMM:
         q_jointstate = JointState()
         get_jacobian_client = rospy.ServiceProxy("/get_jacobian_service", GetJacobian)
         resp = get_jacobian_client(True, None)
-        # q_0 = np.expand_dims(np.array(resp.q_0.position), axis=1) # start joint configuration
         q_0 = np.array(resp.q_0.position) # start joint configuration
         print("q_0: ", q_0)
-        # q_0 = np.vstack(np.zeros(1), q_0)
-        # q_i = deepcopy(q_0) # q_(t-1)
         q_t = np.zeros((q_0.shape[0], rnew.Data.shape[1]))
         print("q_t.shape: ", q_t.shape)
         print("q_t[:,0].shape: ", q_t[:,0].shape)
         q_t[:,0] = q_0 # Initialize q_t with q_0
-        # for g in range(self.nbStates): q_t[:,g,0] = q_0  # Initialize q_t with q_0
-        # q_t[:,:self.nbStates,0] = np.ones((q_t.shape[0], self.nbStates)) * q_0  # Initialize q_t with q_0
-
-        # qData = np.zeros((rnew.Data.shape))
 
         q_Mu = np.zeros((q_0.shape[0], self.nbStates))
         q_Sigma = np.zeros((1+q_0.shape[0], 1+q_0.shape[0], self.nbStates))
-        # q_Mu = np.zeros((1+q_0.shape[0], 1, 1))
-        # q_Sigma = np.zeros((1+q_0.shape[0], 1+q_0.shape[0], 1, 1))
+        gauss_indx = np.zeros((self.nbStates))
 
         inc = 8
         for t in range(inc, rnew.Data.shape[1], inc):
-            print("t: ", t)
+            # print("t: ", t)
             # getJacobian
             q_jointstate.position = q_t[:,t-inc]
             get_jacobian_client = rospy.ServiceProxy("/get_jacobian_service", GetJacobian)
@@ -229,14 +223,15 @@ class TPGMM:
             
             # Getting the Gaussians' means in joint space
             for g in range(self.nbStates):
-                if (np.linalg.norm(np.array([rnew.Mu[1:,g,-1]]) - np.array([rnew.Data[1:,t]])) < 0.001): # To visualize the Guassian's mean
+                if (np.linalg.norm(np.array([rnew.Mu[1:,g,-1]]) - np.array([rnew.Data[1:,t]])) < 0.001):
                     q_Mu[:,g] = q_t[:,t]
                     q_Sigma[1:,1:,g] = jacobian_pinv @ rnew.Sigma[1:,1:,g,t] @ jacobian_pinv.T
                     # q_Sigma = np.vstack(( np.array([1, np.zeros(q_0.shape[0])]), np.hstack(( np.zeros(q_0.shape[0],1), q_Sigma[1:,1:,g] )) ))
-                    q_Sigma[0,:,g] = np.hstack( (np.ones((1,1)), np.zeros((1, q_0.shape[0]))) )
-                    q_Sigma[1:,0,g] = np.zeros( q_0.shape[0] )
+                    # q_Sigma[0,:,g] = np.hstack( (np.ones((1,1)), np.zeros((1, q_0.shape[0]))) )
+                    # q_Sigma[1:,0,g] = np.zeros( q_0.shape[0] )
                     # print("q_Mu: ", q_Mu)
-                    # break
+                    gauss_indx[g] = t
+                    # print("gaus_indx: ", gauss_indx)
             
             # For Visualization of jacobian-based IK trajectory solution in RViz
             jointtrajectorypoint_q_viz.positions = q_t[:,t]
@@ -244,34 +239,36 @@ class TPGMM:
             #/ For Visualization of jacobian-based IK trajectory solution in RViz
 
 
-            ## Creating a new rClass for JointSpace
-
-            # print("rnew.Mu: ", rnew.Mu[:,:,t])
-            # print("rnew.Sigma: ", rnew.Sigma[:,:,:,t])
-
-            # print("q_rnew.Data: ", q_rnew.Data[:,t])
-            # print("q_rnew.H: ", q_rnew.H[:,t])
-            # print("q_rnew.Mu: ", q_rnew.Mu[:,:,t])
-            # print("q_rnew.Sigma: ", q_rnew.Sigma[:,:,:,t])
-
-        print("q_Mu: ", q_Mu)
-
+        # print("q_Mu: ", q_Mu)
         q_nbData = int(self.nbData/inc)
-        print("q_nbData: ", q_nbData)
+        # print("q_nbData: ", q_nbData)
+
+        ## Computing the Covariance of time with joint values (q_t)
+        covar_var = np.zeros((1+q_0.shape[0], 1+q_0.shape[0], self.nbStates))
+        for g in range(self.nbStates):
+            time_var = np.arange(inc, gauss_indx[g], inc)[np.newaxis, :]
+            # print("time_var: ", time_var.shape)
+            print(np.arange(inc, gauss_indx[g], inc))
+            q_var = q_t[:,np.arange(inc, int(gauss_indx[g]), inc)]
+            # print("q_var: ", q_var.shape)
+            vars = np.vstack((time_var, q_var))
+            # print("vars: ", vars.shape)
+            covar_var[:,:,g] = np.cov(vars)
+            # print("covar_var: ", covar_var.shape)
+
+            q_Sigma[0,:,g] = covar_var[0,:,g] # np.hstack( (np.ones((1,1)), np.zeros((1, q_0.shape[0]))) )
+            q_Sigma[:,0,g] = covar_var[:,0,g]
+
+        ## Creating a new rClass for JointSpace
         q_model = model(self.nbStates, self.nbFrames, q_t.shape[0]+1, None, None, None, None, None)
         q_rnew = r(q_nbData, q_model)
-        
-        
-        # q_rnew.Mu[0,:,:] = np.arange(inc, rnew.Data.shape[1], inc) # OR for g in range(self.nbStates): q_rnew.Mu[0,g,:] = np.arange(inc, rnew.Data.shape[1], inc)
+                
         # NOTE: rnew.Mu[0,:,-1] is the mean of time samples. In current work, frame A & b are fixed, therefore, rnew.Mu holds the same values for every time increment, so -1 can be any index actually
-        # q_rnew.Mu[:,:,:] = np.tile(np.vstack([[rnew.Mu[0,:,-1]], q_Mu]), q_nbData).reshape((q_Mu.shape[0], q_Mu.shape[1], q_nbData), order='F')
         q_rnew.Mu[:,:,:] = np.tile(np.vstack([[rnew.Mu[0,:,-1]], q_Mu]), q_nbData).reshape((1+q_Mu.shape[0], q_Mu.shape[1], q_nbData), order='F')
         q_rnew.Sigma = np.tile(q_Sigma, q_nbData).reshape((q_Sigma.shape[0], q_Sigma.shape[1], q_Sigma.shape[2], q_nbData), order='F')
-        
-        # q_rnew = deepcopy(rnew)
-        # q_rnew.Data = np.vstack((np.zeros((1,q_t.shape[1])), q_t))
-        # q_rnew.Mu[:] =            # To keep the values of 1st Var in nbVar (which is time) the same as rnew
-        # q_rnew.Sigma[1:,1:,:,:] = q_Sigma[:3,:3,:,:]
+        # print(q_rnew.Sigma[:,:,-1,-1])
+
+        # Convert to GMM and Save as bag file
         gmm = self.TPGMMGMR.convertToGM(q_rnew)
 
         # Publishing for Visualization
@@ -282,7 +279,7 @@ class TPGMM:
         self.solveFK_pub.publish(q_FK_viz)
         #/ Publishing for Visualization
 
-        # Save and Publish reproduced TP-GMM  --------------------------------------------------------------------------------------------- #
+        # Publish reproduced TP-GMM  --------------------------------------------------------------------------------------------- #
         self.tpgmm_pub.publish(gmm)
         print("GMM is Published!")
         # self.tpGMMPlot()
