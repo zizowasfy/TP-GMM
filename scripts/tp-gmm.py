@@ -30,7 +30,7 @@ from modelClass import model
 from matplotlib import pyplot as plt
 from TPGMM_GMR import TPGMM_GMR
 from copy import deepcopy,copy
-from data_handle.srv import GetJacobian
+from data_handle.srv import *
 
 class TPGMM:
     def __init__(self):
@@ -136,7 +136,7 @@ class TPGMM:
         self.frame2_pose = req.goal_pose.pose         
         # self.getFramePoses()
         newP = deepcopy(self.slist[self.demons_info2['demons_nums'].index(self.demons_info2['ref'])].p)
-        print("self.demons_info2['demons_nums'].index(self.demons_info2['ref']) = ", self.demons_info2['demons_nums'].index(self.demons_info2['ref']))
+        # print("self.demons_info2['demons_nums'].index(self.demons_info2['ref']) = ", self.demons_info2['demons_nums'].index(self.demons_info2['ref']))
         # newP = p(np.zeros((self.nbVar,self.nbVar)), np.zeros((self.nbVar,1)), np.zeros((self.nbVar,self.nbVar)), self.nbStates)
         newb1 = np.array([[0], [self.frame1_pose.position.x], [self.frame1_pose.position.y], [self.frame1_pose.position.z]], dtype=object)
         newb2 = np.array([[0], [self.frame2_pose.position.x], [self.frame2_pose.position.y], [self.frame2_pose.position.z]], dtype=object)
@@ -158,10 +158,14 @@ class TPGMM:
 
         rnew = self.TPGMMGMR.reproduce(newP, newb1[1:,:])
         
+
+        for_start_time = time.time()
+
         # Debugging and Visualizing in RViz the trajectory reproduced from regression TP-GMR
-        print("rnew ReproductionMatrix: ", self.TPGMMGMR.getReproductionMatrix(rnew).shape)
-        print("rnew.H: ", rnew.H[:,-5:-1])
-        print("rnew.Data: ", rnew.Data[:,:5])
+        # print("rnew ReproductionMatrix: ", self.TPGMMGMR.getReproductionMatrix(rnew).shape)
+        # print("rnew.H: ", rnew.H[:,-5:-1])
+        # print("rnew.Data: ", rnew.Data[:,:5])
+        pose_array_time = time.time()
         posearray = PoseArray()
         pose = Pose()
         for k in range(self.nbData):
@@ -174,9 +178,10 @@ class TPGMM:
             posearray.poses.append(deepcopy(pose))
         posearray.header.frame_id = "panda_link0"
         self.learned_traj_pub.publish(posearray)
+        print("... pose_array_time: ", time.time() - pose_array_time)
         # np.savetxt("/home/zizo/haptics-ctrl_ws/src/tp_gmm/scripts/rnew_Mu.txt", rnew.Mu[1,1,:], fmt='%.5f')
-        print("rnew.Mu: ", rnew.Mu[:,-1,-1])
-        print("rnew.Sigma: ", rnew.Sigma[:,:,-1,-1])
+        # print("rnew.Mu: ", rnew.Mu[:,-1,-1])
+        # print("rnew.Sigma: ", rnew.Sigma[:,:,-1,-1])
         #/ Debugging
         
         # Saving GMM to rosbag ------------------------------------------------------------------------------------------------------------ #
@@ -184,74 +189,96 @@ class TPGMM:
         # self.tpgmm_pub.publish(gmm)
         print("GMM is Published!")
 
-        # Cartesian Space to Joint Space Transformation ----------------------------------------------------------------------------------- #
+        # Cartesian Space to Joint Space Projection ----------------------------------------------------------------------------------- #
         move_group_q_viz = MoveGroupActionResult()
         jointtrajectorypoint_q_viz = JointTrajectoryPoint()
         # solving IK using jacobian-based
         q_jointstate = JointState()
+        # srv_time = time.time()
         get_jacobian_client = rospy.ServiceProxy("/get_jacobian_service", GetJacobian)
         resp = get_jacobian_client(True, None)
+        # print("... srv_time: ", time.time() - srv_time)
         q_0 = np.array(resp.q_0.position) # start joint configuration
         print("q_0: ", q_0)
-        q_t = np.zeros((q_0.shape[0], rnew.Data.shape[1]))
-        print("q_t.shape: ", q_t.shape)
-        print("q_t[:,0].shape: ", q_t[:,0].shape)
-        q_t[:,0] = q_0 # Initialize q_t with q_0
 
+        q_t = np.zeros((q_0.shape[0], rnew.Data.shape[1]))
+        q_t[:,0] = q_0 # Initialize q_t with q_0
+        
         q_Mu = np.zeros((q_0.shape[0], self.nbStates))
         q_Sigma = np.zeros((1+q_0.shape[0], 1+q_0.shape[0], self.nbStates))
         gauss_indx = np.zeros((self.nbStates))
 
-        for_start_time = time.time()
-        inc = 4
+        # for_start_time = time.time()
+        inc = 4  
         for t in range(inc, rnew.Data.shape[1], inc):
-            # loop_time = time.time()
-            # print("t: ", t)
-            # getJacobian
-            q_jointstate.position = q_t[:,t-inc]
-            # srv_time = time.time()
-            # get_jacobian_client = rospy.ServiceProxy("/get_jacobian_service", GetJacobian)
-            resp = get_jacobian_client(False, q_jointstate)
-            # print("... srv_time: ", time.time() - srv_time)
-            # print("jacobian_vec = ", resp.jacobian_vec)
-            # jacobian_mat = np.reshape(np.array(resp.jacobian_vec), (6,7), order='C') # row-major order
-            # print("jacobian_mat_row: ", jacobian_mat)
-            jacobian_mat = np.reshape(np.array(resp.jacobian_vec), (7,7), order='F') # col-major order
-            jacobian_mat = jacobian_mat[:3,:]
-            # print("jacobian_mat: ", jacobian_mat)
-            # jacob_pinv_time = time.time()
-            jacobian_pinv = np.linalg.pinv(jacobian_mat)
-            # print("... jacob_pinv_time: ", time.time() - jacob_pinv_time)
-            # print("jacobian_pinv.shape: ",jacobian_pinv.shape)
-
-            # compute IK
-            x_i = rnew.Data[1:,t-inc] # x_(t-1)
-            x_t = rnew.Data[1:,t]
-            # q_t_time = time.time()
-            q_t[:,t] = q_t[:,t-inc] + jacobian_pinv @ (np.array(x_t) - np.array(x_i)) #(np.append(x_t, np.zeros(4)) - np.append(x_i, np.zeros(4)))
-            # print("... q_t_time: ", time.time() - q_t_time)
-
             # Getting the Gaussians' means in joint space
-            # innerloop_time = time.time()
             for g in range(self.nbStates):
                 if (np.linalg.norm(np.array([rnew.Mu[1:,g,-1]]) - np.array([rnew.Data[1:,t]])) < 0.001):
-                    q_Mu[:,g] = q_t[:,t]
-                    # q_Sigma_time = time.time()
-                    q_Sigma[1:,1:,g] = jacobian_pinv @ rnew.Sigma[1:,1:,g,t] @ jacobian_pinv.T
-                    # print(".. q_Sigma_time: ", time.time() - q_Sigma_time)
-                    # q_Sigma = np.vstack(( np.array([1, np.zeros(q_0.shape[0])]), np.hstack(( np.zeros(q_0.shape[0],1), q_Sigma[1:,1:,g] )) ))
-                    # q_Sigma[0,:,g] = np.hstack( (np.ones((1,1)), np.zeros((1, q_0.shape[0]))) )
-                    # q_Sigma[1:,0,g] = np.zeros( q_0.shape[0] )
-                    # print("q_Mu: ", q_Mu)
                     gauss_indx[g] = t
-                    # print("gaus_indx: ", gauss_indx)
-            # print("... innerloop_time: ", time.time() - innerloop_time)
+        print("gaus_indx: ", gauss_indx)
+        
+        srv_time = time.time()
+        get_jacobianIKSol_client = rospy.ServiceProxy("/get_jacobianIKSol_service", GetJacobianIKSol)
+        resp_jacobIKSol = get_jacobianIKSol_client(posearray, gauss_indx)
+        print("... jacokIKSol srv_time: ", time.time() - srv_time)
+        print("resp_jacobIKSol.Q_t: ", np.array(resp_jacobIKSol.Q_t.points[0].positions))
+        dim0 = resp_jacobIKSol.jacobian_vec.layout.dim[0].size
+        dim1 = resp_jacobIKSol.jacobian_vec.layout.dim[1].size
+        dim2 = resp_jacobIKSol.jacobian_vec.layout.dim[2].size
+        jacobian_vec = np.reshape(np.array(resp_jacobIKSol.jacobian_vec.data), (dim0,dim1,dim2), order='F')
+        print("jacobian_vec.shape: ", jacobian_vec.shape)
 
-            # For Visualization of jacobian-based IK trajectory solution in RViz
-            jointtrajectorypoint_q_viz.positions = q_t[:,t]
-            move_group_q_viz.result.planned_trajectory.joint_trajectory.points.append(deepcopy(jointtrajectorypoint_q_viz))
-            #/ For Visualization of jacobian-based IK trajectory solution in RViz
-            # print("... loop_time: ", time.time() - loop_time)
+        # print(jacobian_vec[:,:,1])
+
+            # # loop_time = time.time()
+            # # print("t: ", t)
+            # # getJacobian
+            # q_jointstate.position = q_t[:,t-inc]
+            # srv_time = time.time()
+            # # get_jacobian_client = rospy.ServiceProxy("/get_jacobian_service", GetJacobian)
+            # resp = get_jacobian_client(False, q_jointstate)
+            # print("... srv_time: ", time.time() - srv_time)
+            # # print("jacobian_vec = ", resp.jacobian_vec)
+            # # jacobian_mat = np.reshape(np.array(resp.jacobian_vec), (6,7), order='C') # row-major order
+            # # print("jacobian_mat_row: ", jacobian_mat)
+            # jacobian_mat = np.reshape(np.array(resp.jacobian_vec), (7,7), order='F') # col-major order
+            # jacobian_mat = jacobian_mat[:3,:]
+            # # print("jacobian_mat: ", jacobian_mat)
+            # jacob_pinv_time = time.time()
+            # jacobian_pinv = np.linalg.pinv(jacobian_mat)
+            # print("... jacob_pinv_time: ", time.time() - jacob_pinv_time)
+            # # print("jacobian_pinv.shape: ",jacobian_pinv.shape)
+
+            # # compute IK
+            # x_i = rnew.Data[1:,t-inc] # x_(t-1)
+            # x_t = rnew.Data[1:,t]
+            # # q_t_time = time.time()
+            # q_t[:,t] = q_t[:,t-inc] + jacobian_pinv @ (np.array(x_t) - np.array(x_i)) #(np.append(x_t, np.zeros(4)) - np.append(x_i, np.zeros(4)))
+            # # print("... q_t_time: ", time.time() - q_t_time)
+
+            # # Getting the Gaussians' means in joint space
+            # # innerloop_time = time.time()
+            # for g in range(self.nbStates):
+            #     if (np.linalg.norm(np.array([rnew.Mu[1:,g,-1]]) - np.array([rnew.Data[1:,t]])) < 0.001):
+            #         q_Mu[:,g] = q_t[:,t]
+            #         # q_Sigma_time = time.time()
+            #         q_Sigma[1:,1:,g] = jacobian_pinv @ rnew.Sigma[1:,1:,g,t] @ jacobian_pinv.T
+            #         # print(".. q_Sigma_time: ", time.time() - q_Sigma_time)
+            #         # q_Sigma = np.vstack(( np.array([1, np.zeros(q_0.shape[0])]), np.hstack(( np.zeros(q_0.shape[0],1), q_Sigma[1:,1:,g] )) ))
+            #         # q_Sigma[0,:,g] = np.hstack( (np.ones((1,1)), np.zeros((1, q_0.shape[0]))) )
+            #         # q_Sigma[1:,0,g] = np.zeros( q_0.shape[0] )
+            #         # print("q_Mu: ", q_Mu)
+            #         gauss_indx[g] = t
+            #         # print("gaus_indx: ", gauss_indx)
+            # # print("... innerloop_time: ", time.time() - innerloop_time)
+
+            # # For Visualization of jacobian-based IK trajectory solution in RViz
+            # jointtrajectorypoint_q_viz.positions = q_t[:,t]
+            # move_group_q_viz.result.planned_trajectory.joint_trajectory.points.append(deepcopy(jointtrajectorypoint_q_viz))
+            # #/ For Visualization of jacobian-based IK trajectory solution in RViz
+            # # print("... loop_time: ", time.time() - loop_time)
+
+
         print("... for_start_time: ", time.time() - for_start_time)
         
 
