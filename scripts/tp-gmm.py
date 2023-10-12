@@ -18,7 +18,7 @@ from nbconvert.preprocessors import ExecutePreprocessor
 import pickle
 
 # tpgmm-related stuff
-# from numba import njit
+from numba import njit
 import time
 import numpy as np
 from math import sqrt
@@ -129,8 +129,9 @@ class TPGMM:
         self.TPGMMGMR.fit(self.slist)
         
         # self.tpGMMGMR()
-
+    # @njit
     def tpGMMGMR(self, req):
+        total_rep_time = time.time()
         # Reproduction with generated parameters------------------------------------------------------------------------------ #
         self.frame1_pose = req.start_pose.pose
         self.frame2_pose = req.goal_pose.pose         
@@ -148,6 +149,8 @@ class TPGMM:
         newA2 = np.vstack(( np.array([1,0,0,0]), np.hstack(( np.zeros((3,1)), rA2.as_matrix() )) )) # TODO: Quat2rotMat
         # print(newA1)
         # print(newb1)
+
+        newP_loop_time = time.time()
         for k in range(self.nbData):
             newP[0, k].b = newb1
             newP[1, k].b = newb2            
@@ -155,39 +158,53 @@ class TPGMM:
             newP[1, k].A = newA2
             newP[0, k].invA = np.linalg.inv(newA1) # TOTRY: with and without invA
             newP[1, k].invA = np.linalg.inv(newA2) # TOTRY: with and without invA
+        print("... newP_loop_time: ", time.time() - newP_loop_time)
 
-        rnew = self.TPGMMGMR.reproduce(newP, newb1[1:,:])
-        
 
-        for_start_time = time.time()
+        newP_tile_time = time.time()
+        newP[0,0].b = newb1
+        newP[1,0].b = newb2
+        newP[0,0].A = newA1
+        newP[1,0].A = newA2
+        newP[0,0].invA = np.linalg.inv(newA1)
+        newP[1,0].invA = np.linalg.inv(newA2)
+        newPP = np.tile(newP[:,0][:, np.newaxis], newP.shape[1])
+        print("... newPP_loop_time: ", time.time() - newP_tile_time)
 
-        # Debugging and Visualizing in RViz the trajectory reproduced from regression TP-GMR
-        # print("rnew ReproductionMatrix: ", self.TPGMMGMR.getReproductionMatrix(rnew).shape)
-        # print("rnew.H: ", rnew.H[:,-5:-1])
-        # print("rnew.Data: ", rnew.Data[:,:5])
-        pose_array_time = time.time()
-        posearray = PoseArray()
-        pose = Pose()
-        for k in range(self.nbData):
-            pose.position.x = rnew.Data[1,k]
-            pose.position.y = rnew.Data[2,k]
-            pose.position.z = rnew.Data[3,k]
-            # for g in range(self.nbStates):
-                # if (np.linalg.norm(np.array([rnew.Mu[1:,g,-1]]) - np.array([pose.position.x, pose.position.y, pose.position.z]))) < 0.001: # To visualize the Guassian's mean
-                #     break
-            posearray.poses.append(deepcopy(pose))
-        posearray.header.frame_id = "panda_link0"
-        self.learned_traj_pub.publish(posearray)
-        print("... pose_array_time: ", time.time() - pose_array_time)
-        # np.savetxt("/home/zizo/haptics-ctrl_ws/src/tp_gmm/scripts/rnew_Mu.txt", rnew.Mu[1,1,:], fmt='%.5f')
-        # print("rnew.Mu: ", rnew.Mu[:,-1,-1])
-        # print("rnew.Sigma: ", rnew.Sigma[:,:,-1,-1])
-        #/ Debugging
+
+        reproduce_time = time.time()
+        rnew = self.TPGMMGMR.reproduce(newPP, newb1[1:,:])
+        print("... reproduce_time: ", time.time() - reproduce_time)
+
+
+
+        # # Debugging and Visualizing in RViz the trajectory reproduced from regression TP-GMR
+        # # print("rnew ReproductionMatrix: ", self.TPGMMGMR.getReproductionMatrix(rnew).shape)
+        # # print("rnew.H: ", rnew.H[:,-5:-1])
+        # # print("rnew.Data: ", rnew.Data[:,:5])
+        # pose_array_time = time.time()
+        # posearray = PoseArray()
+        # pose = Pose()
+        # for k in range(self.nbData):
+        #     pose.position.x = rnew.Data[1,k]
+        #     pose.position.y = rnew.Data[2,k]
+        #     pose.position.z = rnew.Data[3,k]
+        #     # for g in range(self.nbStates):
+        #         # if (np.linalg.norm(np.array([rnew.Mu[1:,g,-1]]) - np.array([rnew.Data[1:,k]])) < 0.001): # To visualize the Guassian's mean
+        #             # break
+        #     posearray.poses.append(deepcopy(pose))
+        # posearray.header.frame_id = "panda_link0"
+        # self.learned_traj_pub.publish(posearray)
+        # print("... pose_array_time: ", time.time() - pose_array_time)
+        # # np.savetxt("/home/zizo/haptics-ctrl_ws/src/tp_gmm/scripts/rnew_Mu.txt", rnew.Mu[1,1,:], fmt='%.5f')
+        # # print("rnew.Mu: ", rnew.Mu[:,-1,-1])
+        # # print("rnew.Sigma: ", rnew.Sigma[:,:,-1,-1])
+        # #/ Debugging
         
         # Saving GMM to rosbag ------------------------------------------------------------------------------------------------------------ #
         # gmm = self.TPGMMGMR.convertToGM(rnew)
         # self.tpgmm_pub.publish(gmm)
-        print("GMM is Published!")
+        # print("GMM is Published!")
 
         # Cartesian Space to Joint Space Projection ----------------------------------------------------------------------------------- #
         move_group_q_viz = MoveGroupActionResult()
@@ -206,104 +223,91 @@ class TPGMM:
         
         q_Mu = np.zeros((q_0.shape[0], self.nbStates))
         q_Sigma = np.zeros((1+q_0.shape[0], 1+q_0.shape[0], self.nbStates))
-        gauss_indx = np.zeros((self.nbStates))
+        gauss_indx = np.zeros((self.nbStates), dtype=int)
 
-        # for_start_time = time.time()
-        inc = 4  
+
+        posearray = PoseArray()
+        pose = Pose()        
+        inc = 4
         for t in range(inc, rnew.Data.shape[1], inc):
-            # Getting the Gaussians' means in joint space
+            # 
+            pose.position.x = rnew.Data[1,t]
+            pose.position.y = rnew.Data[2,t]
+            pose.position.z = rnew.Data[3,t]
+            posearray.poses.append(deepcopy(pose))
+            # Getting the Gaussians' means indeices in joint space
             for g in range(self.nbStates):
                 if (np.linalg.norm(np.array([rnew.Mu[1:,g,-1]]) - np.array([rnew.Data[1:,t]])) < 0.001):
                     gauss_indx[g] = t
+        print("gaus_indx (before): ", gauss_indx)
+        gauss_indx = (gauss_indx/np.array(inc)).astype(int)                    
         print("gaus_indx: ", gauss_indx)
-        
+        posearray.header.frame_id = "panda_link0"
+        self.learned_traj_pub.publish(posearray)
+        print("posearray.poses: ", len(posearray.poses))
+
+
         srv_time = time.time()
         get_jacobianIKSol_client = rospy.ServiceProxy("/get_jacobianIKSol_service", GetJacobianIKSol)
-        resp_jacobIKSol = get_jacobianIKSol_client(posearray, gauss_indx)
+        resp_jacobIKSol = get_jacobianIKSol_client(posearray) #(inc, posearray, gauss_indx)
         print("... jacokIKSol srv_time: ", time.time() - srv_time)
-        print("resp_jacobIKSol.Q_t: ", np.array(resp_jacobIKSol.Q_t.points[0].positions))
-        dim0 = resp_jacobIKSol.jacobian_vec.layout.dim[0].size
-        dim1 = resp_jacobIKSol.jacobian_vec.layout.dim[1].size
-        dim2 = resp_jacobIKSol.jacobian_vec.layout.dim[2].size
-        jacobian_vec = np.reshape(np.array(resp_jacobIKSol.jacobian_vec.data), (dim0,dim1,dim2), order='F')
-        print("jacobian_vec.shape: ", jacobian_vec.shape)
-
+        # print("resp_jacobIKSol.Q_t: ", np.array(resp_jacobIKSol.Q_t.points[0].positions))
+        # print("resp_jacobIKSol.Q_t.size(): ", len(resp_jacobIKSol.Q_t.points))
+        # dim0 = resp_jacobIKSol.jacobian_vec.layout.dim[0].size
+        # dim1 = resp_jacobIKSol.jacobian_vec.layout.dim[1].size
+        # dim2 = resp_jacobIKSol.jacobian_vec.layout.dim[2].size
+        # jacobian_pinv = np.reshape(np.array(resp_jacobIKSol.jacobian_vec.data), (dim0,dim1,dim2), order='F')
+        # print("jacobian_vec.shape: ", jacobian_pinv.shape)
         # print(jacobian_vec[:,:,1])
 
-            # # loop_time = time.time()
-            # # print("t: ", t)
-            # # getJacobian
-            # q_jointstate.position = q_t[:,t-inc]
-            # srv_time = time.time()
-            # # get_jacobian_client = rospy.ServiceProxy("/get_jacobian_service", GetJacobian)
-            # resp = get_jacobian_client(False, q_jointstate)
-            # print("... srv_time: ", time.time() - srv_time)
-            # # print("jacobian_vec = ", resp.jacobian_vec)
-            # # jacobian_mat = np.reshape(np.array(resp.jacobian_vec), (6,7), order='C') # row-major order
-            # # print("jacobian_mat_row: ", jacobian_mat)
-            # jacobian_mat = np.reshape(np.array(resp.jacobian_vec), (7,7), order='F') # col-major order
-            # jacobian_mat = jacobian_mat[:3,:]
-            # # print("jacobian_mat: ", jacobian_mat)
-            # jacob_pinv_time = time.time()
-            # jacobian_pinv = np.linalg.pinv(jacobian_mat)
-            # print("... jacob_pinv_time: ", time.time() - jacob_pinv_time)
-            # # print("jacobian_pinv.shape: ",jacobian_pinv.shape)
+        q_t_time = time.time()
+        q_t = np.zeros((q_0.shape[0], len(resp_jacobIKSol.Q_t.points)))
+        q_nbData = q_t.shape[1]
+        for i in range(q_nbData): q_t[:,i] = np.array(resp_jacobIKSol.Q_t.points[i].positions)
+        print("... q_t_time: ", time.time() - q_t_time)
+        # q_t_arr_time = time.time()
+        # q_t = np.reshape(np.array(resp_jacobIKSol.Q_t_arr), (q_t.shape), order='F') # Took shorter than the for loop by ~ 0.00075
+        # print("... q_t_arr_time: ", time.time() - q_t_arr_time)
+        print("Q_t size(): ", q_t.shape)
 
-            # # compute IK
-            # x_i = rnew.Data[1:,t-inc] # x_(t-1)
-            # x_t = rnew.Data[1:,t]
-            # # q_t_time = time.time()
-            # q_t[:,t] = q_t[:,t-inc] + jacobian_pinv @ (np.array(x_t) - np.array(x_i)) #(np.append(x_t, np.zeros(4)) - np.append(x_i, np.zeros(4)))
-            # # print("... q_t_time: ", time.time() - q_t_time)
+        # Getting the Gaussians' means in joint space
+        # innerloop_time = time.time()
+        for g in range(self.nbStates):
+            q_Mu[:,g] = resp_jacobIKSol.Q_t.points[gauss_indx[g]].positions
+            # q_Sigma_time = time.time()
+            # q_Sigma[1:,1:,g] = jacobian_pinv[:,:,g] @ rnew.Sigma[1:,1:,g,gauss_indx[g]] @ jacobian_pinv[:,:,g].T
+            # print(".. q_Sigma_time: ", time.time() - q_Sigma_time)
+        # print("... innerloop_time: ", time.time() - innerloop_time)
 
-            # # Getting the Gaussians' means in joint space
-            # # innerloop_time = time.time()
-            # for g in range(self.nbStates):
-            #     if (np.linalg.norm(np.array([rnew.Mu[1:,g,-1]]) - np.array([rnew.Data[1:,t]])) < 0.001):
-            #         q_Mu[:,g] = q_t[:,t]
-            #         # q_Sigma_time = time.time()
-            #         q_Sigma[1:,1:,g] = jacobian_pinv @ rnew.Sigma[1:,1:,g,t] @ jacobian_pinv.T
-            #         # print(".. q_Sigma_time: ", time.time() - q_Sigma_time)
-            #         # q_Sigma = np.vstack(( np.array([1, np.zeros(q_0.shape[0])]), np.hstack(( np.zeros(q_0.shape[0],1), q_Sigma[1:,1:,g] )) ))
-            #         # q_Sigma[0,:,g] = np.hstack( (np.ones((1,1)), np.zeros((1, q_0.shape[0]))) )
-            #         # q_Sigma[1:,0,g] = np.zeros( q_0.shape[0] )
-            #         # print("q_Mu: ", q_Mu)
-            #         gauss_indx[g] = t
-            #         # print("gaus_indx: ", gauss_indx)
-            # # print("... innerloop_time: ", time.time() - innerloop_time)
-
-            # # For Visualization of jacobian-based IK trajectory solution in RViz
-            # jointtrajectorypoint_q_viz.positions = q_t[:,t]
-            # move_group_q_viz.result.planned_trajectory.joint_trajectory.points.append(deepcopy(jointtrajectorypoint_q_viz))
-            # #/ For Visualization of jacobian-based IK trajectory solution in RViz
-            # # print("... loop_time: ", time.time() - loop_time)
-
-
-        print("... for_start_time: ", time.time() - for_start_time)
-        
-
-        # print("q_Mu: ", q_Mu)
-        q_nbData = int(self.nbData/inc)
-        # print("q_nbData: ", q_nbData)
+        # For Visualization of jacobian-based IK trajectory solution in RViz
+        move_group_q_viz.result.planned_trajectory.joint_trajectory = resp_jacobIKSol.Q_t
+        #/ For Visualization of jacobian-based IK trajectory solution in RViz
 
         ## Computing the Covariance of time with joint values (q_t)
+        covar_time = time.time()
         covar_var = np.zeros((1+q_0.shape[0], 1+q_0.shape[0], self.nbStates))
         for g in range(self.nbStates):
-            time_var = np.arange(inc, gauss_indx[g], inc)[np.newaxis, :]
+            time_var = np.arange(inc, gauss_indx[g]*inc, inc)[np.newaxis, :] 
             # print("time_var: ", time_var.shape)
             # print(np.arange(inc, gauss_indx[g], inc))
-            q_var = q_t[:,np.arange(inc, int(gauss_indx[g]), inc)]
+            q_var = q_t[:, :gauss_indx[g]-1]
             # print("q_var: ", q_var.shape)
             vars = np.vstack((time_var, q_var))
             # print("vars: ", vars.shape)
             covar_var[:,:,g] = np.cov(vars)
             # print("covar_var: ", covar_var.shape)
 
-            q_Sigma[0,:,g] = covar_var[0,:,g] # np.hstack( (np.ones((1,1)), np.zeros((1, q_0.shape[0]))) )
-            q_Sigma[:,0,g] = covar_var[:,0,g]
+            # q_Sigma[0,:,g] = covar_var[0,:,g] # np.hstack( (np.ones((1,1)), np.zeros((1, q_0.shape[0]))) )
+            # q_Sigma[:,0,g] = covar_var[:,0,g]
+            q_Sigma = covar_var
 
+        print("... covar_time: ", time.time() - covar_time)
+
+
+
+        q_rnew_time = time.time()
         ## Creating a new rClass for JointSpace
-        q_model = model(self.nbStates, self.nbFrames, q_t.shape[0]+1, None, None, None, None, None)
+        q_model = model(self.nbStates, self.nbFrames, 1+q_t.shape[0], None, None, None, None, None)
         q_rnew = r(q_nbData, q_model)
                 
         # NOTE: rnew.Mu[0,:,-1] is the mean of time samples. In current work, frame A & b are fixed, therefore, rnew.Mu holds the same values for every time increment, so -1 can be any index actually
@@ -314,9 +318,11 @@ class TPGMM:
         # Convert to GMM and Save as bag file
         gmm = self.TPGMMGMR.convertToGM(q_rnew)
 
+        print("... q_rnew_time: ", time.time() - q_rnew_time)
         # Publishing for Visualization
         print("move_group size: ", len(move_group_q_viz.result.planned_trajectory.joint_trajectory.points))
         self.move_group_q_viz_pub.publish(move_group_q_viz)
+        # rospy.sleep(2)
         q_FK_viz = JointState()
         q_FK_viz.position = q_Mu[:,1]
         self.solveFK_pub.publish(q_FK_viz)
@@ -327,6 +333,8 @@ class TPGMM:
         print("GMM is Published!")
         # self.tpGMMPlot()
         # rospy.signal_shutdown("TP-GMM Node is Shutting Down!")
+        print("### TOTAL Reproduction time: ", time.time() - total_rep_time)
+        print("\n")
         return ReproduceTPGMMResponse()
 
     # # Joint Space tpgmm model
