@@ -78,7 +78,7 @@ class TPGMM:
         self.nbVar = 4      # Dim !!
         self.nbFrames = 2 
         self.nbStates = 2  # nb of Gaussians
-        self.nbData = self.demons_info2['ref_nbpoints']-1
+        self.nbData = self.demons_info2['ref_nbpoints']#-1
 
         self.tpGMM()
         return StartTPGMMResponse(True)
@@ -150,15 +150,15 @@ class TPGMM:
         # print(newA1)
         # print(newb1)
 
-        newP_loop_time = time.time()
-        for k in range(self.nbData):
-            newP[0, k].b = newb1
-            newP[1, k].b = newb2            
-            newP[0, k].A = newA1
-            newP[1, k].A = newA2
-            newP[0, k].invA = np.linalg.inv(newA1) # TOTRY: with and without invA
-            newP[1, k].invA = np.linalg.inv(newA2) # TOTRY: with and without invA
-        print("... newP_loop_time: ", time.time() - newP_loop_time)
+        # newP_loop_time = time.time()
+        # for k in range(self.nbData):
+        #     newP[0, k].b = newb1
+        #     newP[1, k].b = newb2            
+        #     newP[0, k].A = newA1
+        #     newP[1, k].A = newA2
+        #     newP[0, k].invA = np.linalg.inv(newA1) # TOTRY: with and without invA
+        #     newP[1, k].invA = np.linalg.inv(newA2) # TOTRY: with and without invA
+        # print("... newP_loop_time: ", time.time() - newP_loop_time)
 
 
         newP_tile_time = time.time()
@@ -208,29 +208,27 @@ class TPGMM:
 
         # Cartesian Space to Joint Space Projection ----------------------------------------------------------------------------------- #
         move_group_q_viz = MoveGroupActionResult()
-        jointtrajectorypoint_q_viz = JointTrajectoryPoint()
+        # jointtrajectorypoint_q_viz = JointTrajectoryPoint()
         # solving IK using jacobian-based
-        q_jointstate = JointState()
+        # q_jointstate = JointState()
         # srv_time = time.time()
-        get_jacobian_client = rospy.ServiceProxy("/get_jacobian_service", GetJacobian)
-        resp = get_jacobian_client(True, None)
+        # get_jacobian_client = rospy.ServiceProxy("/get_jacobian_service", GetJacobian)
+        # resp = get_jacobian_client(True, None)
         # print("... srv_time: ", time.time() - srv_time)
-        q_0 = np.array(resp.q_0.position) # start joint configuration
-        print("q_0: ", q_0)
+        # q_0 = np.array(resp.q_0.position) # start joint configuration
+        # print("q_0: ", q_0)
 
-        q_t = np.zeros((q_0.shape[0], rnew.Data.shape[1]))
-        q_t[:,0] = q_0 # Initialize q_t with q_0
-        
-        q_Mu = np.zeros((q_0.shape[0], self.nbStates))
-        q_Sigma = np.zeros((1+q_0.shape[0], 1+q_0.shape[0], self.nbStates))
+        # q_t = np.zeros((q_0.shape[0], rnew.Data.shape[1]))
+        # q_t[:,0] = q_0 # Initialize q_t with q_0
+    
+
         gauss_indx = np.zeros((self.nbStates), dtype=int)
-
 
         posearray = PoseArray()
         pose = Pose()        
-        inc = 4
-        for t in range(inc, rnew.Data.shape[1], inc):
-            # 
+        inc = 1
+        for t in range(0, rnew.Data.shape[1], inc):
+            # print(t)
             pose.position.x = rnew.Data[1,t]
             pose.position.y = rnew.Data[2,t]
             pose.position.z = rnew.Data[3,t]
@@ -260,8 +258,13 @@ class TPGMM:
         # print("jacobian_vec.shape: ", jacobian_pinv.shape)
         # print(jacobian_vec[:,:,1])
 
+
+        
         q_t_time = time.time()
-        q_t = np.zeros((q_0.shape[0], len(resp_jacobIKSol.Q_t.points)))
+        q_t = np.zeros((len(resp_jacobIKSol.Q_t.points[0].positions), len(resp_jacobIKSol.Q_t.points)))
+        print("q_t.shape: ", q_t.shape)
+        q_Mu = np.zeros((q_t.shape[0], self.nbStates))
+        q_Sigma = np.zeros((1+q_t.shape[0], 1+q_t.shape[0], self.nbStates))
         q_nbData = q_t.shape[1]
         for i in range(q_nbData): q_t[:,i] = np.array(resp_jacobIKSol.Q_t.points[i].positions)
         print("... q_t_time: ", time.time() - q_t_time)
@@ -285,13 +288,14 @@ class TPGMM:
 
         ## Computing the Covariance of time with joint values (q_t)
         covar_time = time.time()
-        covar_var = np.zeros((1+q_0.shape[0], 1+q_0.shape[0], self.nbStates))
+        covar_var = np.zeros((1+q_t.shape[0], 1+q_t.shape[0], self.nbStates))
         for g in range(self.nbStates):
-            time_var = np.arange(inc, gauss_indx[g]*inc, inc)[np.newaxis, :] 
-            # print("time_var: ", time_var.shape)
+            # time_var = np.arange(inc, gauss_indx[g]*inc, inc)[np.newaxis, :]
+            time_var =  rnew.Data[0,:gauss_indx[g]][np.newaxis, :]
+            print("time_var: ", time_var.shape)
             # print(np.arange(inc, gauss_indx[g], inc))
-            q_var = q_t[:, :gauss_indx[g]-1]
-            # print("q_var: ", q_var.shape)
+            q_var = q_t[:, :gauss_indx[g]] #-1]
+            print("q_var: ", q_var.shape)
             vars = np.vstack((time_var, q_var))
             # print("vars: ", vars.shape)
             covar_var[:,:,g] = np.cov(vars)
@@ -322,10 +326,11 @@ class TPGMM:
         # Publishing for Visualization
         print("move_group size: ", len(move_group_q_viz.result.planned_trajectory.joint_trajectory.points))
         self.move_group_q_viz_pub.publish(move_group_q_viz)
-        # rospy.sleep(2)
         q_FK_viz = JointState()
-        q_FK_viz.position = q_Mu[:,1]
+        q_FK_viz.position = q_Mu[:,0]
         self.solveFK_pub.publish(q_FK_viz)
+        # rospy.sleep(5)
+
         #/ Publishing for Visualization
 
         # Publish reproduced TP-GMM  --------------------------------------------------------------------------------------------- #
