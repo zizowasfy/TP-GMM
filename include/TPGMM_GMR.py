@@ -37,7 +37,7 @@ class TPGMM_GMR(object):
         return r.Data
 
     # Converts the learnded GMM into a format that gmm_rviz_converter node can visualize it in Rviz
-    def convertToGM(self, r):
+    def convertToGM(self, r, down_sample_factor):
 
         ## converting to GaussianMixture() msg 
         nbGaussians = r.Mu.shape[1]
@@ -52,7 +52,7 @@ class TPGMM_GMR(object):
             g.covariances = np.ravel(r.Sigma[:,:,gaus,-1])
             gmm.gaussians.append(copy.deepcopy(g))
         gmm.weights = self.model.Priors # or r.H
-        gmm.bic = r.Data.shape[1]
+        gmm.bic = r.Data.shape[1]*down_sample_factor
 
         # print("r.Mu[:,1,0] == r.Mu[:,1,-1]: ", r.Mu[:,1,0] == r.Mu[:,1,-1]) # debuging.
         ## Writing to rosbag
