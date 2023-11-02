@@ -50,6 +50,7 @@ class TPGMM_GMR(object):
         for gaus in range(nbGaussians):
             g.means = r.Mu[:,gaus,-1]
             g.covariances = np.ravel(r.Sigma[:,:,gaus,-1])
+            # print("convertToGM g.covariances: ", g.covariances)
             gmm.gaussians.append(copy.deepcopy(g))
         gmm.weights = self.model.Priors # or r.H
         gmm.bic = r.Data.shape[1]*down_sample_factor
