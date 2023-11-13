@@ -176,13 +176,14 @@ class TPGMM:
         ## Saving and Publishing GMM in Cartesian Space
         gmm = self.TPGMMGMR.convertToGM(rnew, self.down_sample_factor)
         self.tpgmm_viz_pub.publish(gmm)
-        print("GMM is Published!")
+        # print("GMM is Published!")
         # rospy.sleep(3)
 
         # Cartesian Space to Joint Space Projection ----------------------------------------------------------------------------------- #
         move_group_q_viz = MoveGroupActionResult()
         gauss_indx = np.zeros((self.nbStates), dtype=int)
 
+        # x_t_time = time.time()
         x_t = PoseArray()
         pose = Pose()        
         inc = 1
@@ -196,9 +197,10 @@ class TPGMM:
             for g in range(self.nbStates):
                 if (np.linalg.norm(np.array([rnew.Mu[1:,g,-1]]) - np.array([rnew.Data[1:,t]])) < 0.1):
                     gauss_indx[g] = t
-        print("gaus_indx (before): ", gauss_indx)
+        # print("... x_t_time: ", time.time() - x_t_time)
+        # print("gaus_indx (before): ", gauss_indx)
         gauss_indx = (gauss_indx/np.array(inc)).astype(int)                    
-        print("gaus_indx: ", gauss_indx)
+        # print("gaus_indx: ", gauss_indx)
         x_t.header.frame_id = "panda_link0"
         self.learned_traj_pub.publish(x_t)
         # print("x_t.poses: ", len(x_t.poses))
@@ -214,12 +216,12 @@ class TPGMM:
         dim1 = resp_jacobIKSol.jacobian_pinv_vec.layout.dim[1].size
         dim2 = resp_jacobIKSol.jacobian_pinv_vec.layout.dim[2].size
         jacobian_pinv_mat = np.reshape(np.array(resp_jacobIKSol.jacobian_pinv_vec.data), (dim0,dim1,dim2), order='F')
-        print("jacobian_pinv_mat.shape: ", jacobian_pinv_mat.shape)
+        # print("jacobian_pinv_mat.shape: ", jacobian_pinv_mat.shape)
         
         # q_t_time = time.time()
         q_t = np.zeros((len(resp_jacobIKSol.Q_t.points[0].positions), len(resp_jacobIKSol.Q_t.points)))
         q_Mu = np.zeros((q_t.shape[0], self.nbStates))
-        q_Sigma = np.zeros((1+q_t.shape[0], 1+q_t.shape[0], self.nbStates))
+        # q_Sigma = np.zeros((1+q_t.shape[0], 1+q_t.shape[0], self.nbStates))
         q_nbData = q_t.shape[1]
 
         for i in range(q_nbData): q_t[:,i] = np.array(resp_jacobIKSol.Q_t.points[i].positions)
@@ -229,9 +231,9 @@ class TPGMM:
         for g in range(self.nbStates):
             q_Mu[:,g] = resp_jacobIKSol.Q_t.points[gauss_indx[g]].positions
 
-        # For Visualization of jacobian-based IK trajectory solution in RViz
-        move_group_q_viz.result.planned_trajectory.joint_trajectory = resp_jacobIKSol.Q_t
-        #/ For Visualization of jacobian-based IK trajectory solution in RViz
+        # # For Visualization of jacobian-based IK trajectory solution in RViz
+        # move_group_q_viz.result.planned_trajectory.joint_trajectory = resp_jacobIKSol.Q_t
+        # #/ For Visualization of jacobian-based IK trajectory solution in RViz
 
         # ## Computing the Covariance of time with joint values (q_t) to get q_Sigma (covar. matrix of joint space)
         # # covar_time = time.time()
@@ -249,41 +251,45 @@ class TPGMM:
         #     print("covar_var: ", covar_var.shape)
         #     q_Sigma = covar_var
 
+        # # Uncomment this when sampling from doRegression() (GMR sampling)
         # ## Computing the Covariance of time with joint values (q_t) to get q_Sigma (covar. matrix of joint space)
         # # covar_time = time.time()
-        # covar_var = np.zeros((q_t.shape[0], q_t.shape[0], self.nbStates))
+        # q_Sigma = np.zeros((1+q_t.shape[0], 1+q_t.shape[0], self.nbStates))
+        # covar_var = np.zeros((1+q_t.shape[0], 1+q_t.shape[0], self.nbStates))
         # prev_gauss_indx = 0
         # for g in range(self.nbStates):
-        #     # time_var =  rnew.Data[0,:gauss_indx[g]][np.newaxis, :]
-        #     # time_var = np.arange(0, gauss_indx[g])
+        #     time_var =  rnew.Data[0, prev_gauss_indx:gauss_indx[g]][np.newaxis, :]
         #     # print(time_var)
         #     # print("time_var: ", time_var.shape)
         #     q_var = q_t[:, prev_gauss_indx:gauss_indx[g]] #-1]
-        #     print("q_var: ", q_var.shape)
-        #     # vars = np.vstack((time_var, q_var))
+        #     # print("q_var: ", q_var.shape)
+        #     vars = np.vstack((time_var, q_var))
         #     # print("vars: ", vars.shape)
-        #     covar_var[:,:,g] = np.cov(q_var)
-        #     print("covar_var: ", covar_var.shape)
+        #     covar_var[:,:,g] = np.cov(vars)
+        #     # print("covar_var: ", covar_var.shape)
         #     q_Sigma = covar_var
         #     prev_gauss_indx = gauss_indx[g]
 
-        #     print("covar_var[:,:,g].shape: ", covar_var[:,:,g].shape)
-        #     # # print("covar_var[:,:,g]: ", covar_var[:,:,g])
-        #     # print("q Covariance: [0,:]", np.cov(vars)[0,:])
-        #     # print("q Covariance: [:,0]", np.cov(vars)[:,0])
+        # for g in range(self.nbStates):
+        #     q_Sigma[1:,1:,g] = jacobian_pinv_mat[:,:,g] @ rnew.Sigma[1:,1:,g,-1] @ jacobian_pinv_mat[:,:,g].T        
         # # print("... covar_time: ", time.time() - covar_time)
+        # # \ Uncomment this when sampling from doRegression() (GMR sampling)
 
-        ## Computing the Covariance of time with joint values (q_t) to get q_Sigma (covar. matrix of joint space)
-        covar_time = time.time()
+        # Uncomment this when using samplefromGMM()
+        ## Computing the Covariance with jacobian_pinv to get q_Sigma (covar. matrix of joint space) --
+        ## --  i.e. projecting the covariance from Cartesian to Joint
+        # covar_time = time.time()
         q_Sigma = np.zeros((q_t.shape[0], q_t.shape[0], self.nbStates))
         for g in range(self.nbStates):
             q_Sigma[:,:,g] = jacobian_pinv_mat[:,:,g] @ rnew.Sigma[1:,1:,g,-1] @ jacobian_pinv_mat[:,:,g].T
-
             # print("covar_var[:,:,g].shape: ", q_Sigma[:,:,g].shape)
-        print("... covar_time: ", time.time() - covar_time)
 
+        # print("... covar_time: ", time.time() - covar_time)
+        #\ Uncomment this when using samplefromGMM()
 
-        # # Creating a new rClass for JointSpace ----------------------------------------------------------------------------------- #
+        # Creating a new rClass for JointSpace ----------------------------------------------------------------------------------- #
+        
+        # # Uncomment this when sampling from doRegression() (GMR sampling)
         # # q_rnew_time = time.time()
         # q_model = model(self.nbStates, self.nbFrames, 1+q_t.shape[0], None, None, None, None, None)
         # q_rnew = r(q_nbData, q_model)
@@ -291,8 +297,10 @@ class TPGMM:
         # # NOTE: rnew.Mu[0,:,-1] is the mean of time samples. In current work, frame A & b are fixed, therefore, rnew.Mu holds the same values for every time increment, so -1 can be any index actually
         # q_rnew.Mu[:,:,:] = np.tile(np.vstack([[rnew.Mu[0,:,-1]], q_Mu]), q_nbData).reshape((1+q_Mu.shape[0], q_Mu.shape[1], q_nbData), order='F')
         # q_rnew.Sigma = np.tile(q_Sigma, q_nbData).reshape((q_Sigma.shape[0], q_Sigma.shape[1], q_Sigma.shape[2], q_nbData), order='F')
-        # print("q_rnew.Sigma[:,:,-1,-1]: ", q_rnew.Sigma[:,:,-1,-1])
+        # # print("q_rnew.Sigma[:,:,-1,-1]: ", q_rnew.Sigma[:,:,-1,-1])
+        # #\ Uncomment this when sampling from doRegression() (GMR sampling)
 
+        # Uncomment this when using samplefromGMM()
         # Creating a new rClass for JointSpace ----------------------------------------------------------------------------------- #
         # q_rnew_time = time.time()
         q_model = model(self.nbStates, self.nbFrames, q_t.shape[0], None, None, None, None, None)
@@ -303,6 +311,7 @@ class TPGMM:
         q_rnew.Mu[:,:,:] = np.tile(q_Mu, q_nbData).reshape((q_Mu.shape[0], q_Mu.shape[1], q_nbData), order='F')
         q_rnew.Sigma = np.tile(q_Sigma, q_nbData).reshape((q_Sigma.shape[0], q_Sigma.shape[1], q_Sigma.shape[2], q_nbData), order='F')
         # print("q_rnew.Sigma[:,:,-1,-1]: ", q_rnew.Sigma[:,:,-1,-1])
+        #\ Uncomment this when using samplefromGMM()
 
         ## Convert to GMM and Save as bag file 
         gmm = self.TPGMMGMR.convertToGM(q_rnew, self.down_sample_factor)
@@ -319,7 +328,7 @@ class TPGMM:
 
         # Publish reproduced TP-GMM  --------------------------------------------------------------------------------------------- #
         self.tpgmm_pub.publish(gmm)
-        print("GMM is Published!")
+        # print("GMM is Published!")
         # self.tpGMMPlot()
         # rospy.signal_shutdown("TP-GMM Node is Shutting Down!")
         tpgmm_plan_time = Float32(); tpgmm_plan_time.data = time.time() - total_rep_time 
