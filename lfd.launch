@@ -1,0 +1,23 @@
+<!-- <?xml version="1.0"?> -->
+<launch>
+    <arg name="task"/>
+    <arg name="subtask" default="action"/>
+
+    <param name="task_param" type="string" value="$(arg task)"/>
+    <param name="subtask_param" type="string" value="$(arg subtask)"/>
+    
+    <!-- <node name="demons_entry" pkg="data_handle" type="demons_entry_node" output="screen"/> -->
+    <node name="tp_gmm" pkg="tp_gmm" type="tp-gmm.py" output="screen"/>
+
+    <!-- GMM -->
+    <!-- <node name="gaussian_mixture_model_trajectory_converter" pkg="gaussian_mixture_model" type="gaussian_mixture_model_trajectory_converter" output="screen"/> -->
+    <!-- <node name="gaussian_mixture_model_node" pkg="gaussian_mixture_model" type="gaussian_mixture_model_node" output="screen"/> -->
+    <node name="gaussian_mixture_model_rviz_converter" pkg="gaussian_mixture_model" type="gaussian_mixture_model_rviz_converter" output="screen"/>
+    <!--/ GMM -->
+
+    <!-- Execution -->
+    <!-- <node name="execute_trajectory" pkg="data_handle" type="execute_trajectory_node" output="screen"/>
+    <node name="move_trajectory" pkg="data_handle" type="move_traj.py" output="screen"/> -->
+    <!--/ Execution -->
+
+</launch>

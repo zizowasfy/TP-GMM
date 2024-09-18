@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
 # ROS stuff
 import rospy
-from geometry_msgs.msg import Pose, PointStamped
+from geometry_msgs.msg import Pose, PointStamped, PoseArray
 from gaussian_mixture_model.msg import GaussianMixture
 from tp_gmm.srv import *
 
 # System and directories stuff
 import sys
-sys.path.append("/home/zizo/haptics-ctrl_ws/src/tp_gmm/include")
-data_dir = "/home/zizo/haptics-ctrl_ws/src/tp_gmm/data/"
-scripts_dir = "/home/zizo/haptics-ctrl_ws/src/tp_gmm/scripts/"
+sys.path.append("/home/zizo/itra_ws/src/tp_gmm/include") # This is important to add to make sure all modules in '/include' dir are accessible
+data_dir = "/home/zizo/itra_ws/src/tp_gmm/data/"
+scripts_dir = "/home/zizo/itra_ws/src/tp_gmm/scripts/"
 import nbformat
 from nbconvert.preprocessors import ExecutePreprocessor
 import pickle
@@ -33,6 +33,7 @@ class TPGMM:
         rospy.Service("ReproduceTPGMM_service", ReproduceTPGMM, self.tpGMMGMR)
 
         self.tpgmm_pub = rospy.Publisher('/gmm/mix', GaussianMixture, queue_size=1)
+        self.regress_traj_pub = rospy.Publisher('/gmm/regressed_trajectory', PoseArray, queue_size=1)
 
         self.demonsToSamples_flag = False   
         self.demonsToSamples()
@@ -66,7 +67,7 @@ class TPGMM:
         self.nbSamples = self.demons_info2['nbDemons']  # nb of demonstrations
         self.nbVar = 4      # Dim !!
         self.nbFrames = 2 
-        self.nbStates = 3  # nb of Gaussians
+        self.nbStates = 5  # nb of Gaussians
         self.nbData = self.demons_info2['ref_nbpoints']-1
 
         self.tpGMM()
@@ -148,9 +149,22 @@ class TPGMM:
 
         # Saving GMM to rosbag ------------------------------------------------------------------------------------------------------------ #
         gmm = self.TPGMMGMR.convertToGM(rnew)
-
+        
         self.tpgmm_pub.publish(gmm)
         print("GMM is Published!")
+
+        regressed_trajectory = PoseArray() ; regressed_trajectory.header.frame_id = 'base_link'
+        regressed_point = Pose()
+        for point in rnew.Data.T: # Looping over the points (colums of Data) in renew.Data
+            regressed_point.position.x = point[1]
+            regressed_point.position.y = point[2]
+            regressed_point.position.z = point[3]
+
+            regressed_trajectory.poses.append(deepcopy(regressed_point))
+
+        self.regress_traj_pub.publish(regressed_trajectory)
+        print("Regressed Trajectory is Published!")
+
         # self.tpGMMPlot()
         # rospy.signal_shutdown("TP-GMM Node is Shutting Down!")
         return ReproduceTPGMMResponse()

@@ -55,7 +55,7 @@ class TPGMM_GMR(object):
         gmm.bic = r.Data.shape[1]
 
         ## Writing to rosbag
-        wbag = rosbag.Bag("/home/zizo/haptics-ctrl_ws/src/tp_gmm/data/tpgmm_mix.bag", 'w')
+        wbag = rosbag.Bag("/home/zizo/itra_ws/src/tp_gmm/data/tpgmm_mix.bag", 'w')
         wbag.write("/gmm/mix", gmm)
         wbag.close()
 
