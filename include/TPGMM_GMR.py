@@ -7,7 +7,7 @@ import numpy as np
 import copy
 
 import rosbag
-from gaussian_mixture_model.msg import GaussianMixture, Gaussian
+from tp_gmm.msg import GaussianMixture, Gaussian
 
 class TPGMM_GMR(object):
     def __init__(self, nbStates, nbFrames, nbVar):
@@ -37,7 +37,7 @@ class TPGMM_GMR(object):
         return r.Data
 
     # Converts the learnded GMM into a format that gmm_rviz_converter node can visualize it in Rviz
-    def convertToGM(self, r):
+    def convertToGM(self, r, frame_id):
 
         ## converting to GaussianMixture() msg 
         nbGaussians = r.Mu.shape[1]
@@ -53,9 +53,10 @@ class TPGMM_GMR(object):
             gmm.gaussians.append(copy.deepcopy(g))
         gmm.weights = self.model.Priors # or r.H
         gmm.bic = r.Data.shape[1]
+        gmm.header.frame_id = frame_id
 
         ## Writing to rosbag
-        wbag = rosbag.Bag("/home/zizo/itra_ws/src/tp_gmm/data/tpgmm_mix.bag", 'w')
+        wbag = rosbag.Bag("/home/erl/Multicobot-UR10/src/tp_gmm/data/tpgmm_mix.bag", 'w')
         wbag.write("/gmm/mix", gmm)
         wbag.close()
 

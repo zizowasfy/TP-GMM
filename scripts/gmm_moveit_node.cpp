@@ -59,7 +59,7 @@ public:
         bv.primitive_poses.push_back(sp_pose);
 
         // Visualizing the SolidPrimitive that is used to define an approximation of GMM volume (the new search space)
-        viz_marker.header.frame_id = "base_link";
+        viz_marker.header.frame_id = msg->markers[g].header.frame_id; //"base_link";
         viz_marker.id = msg->markers[g].id;
         viz_marker.type = visualization_msgs::Marker::CUBE;
         viz_marker.action = visualization_msgs::Marker::ADD;

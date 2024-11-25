@@ -76,6 +76,7 @@ add_service_files(
 generate_messages(
   DEPENDENCIES
   geometry_msgs
+  std_msgs
   # std_msgs  # Or other packages containing msgs
 )
 
@@ -142,6 +143,7 @@ include_directories(
 ## With catkin_make all packages are built within a single CMake context
 ## The recommended prefix ensures that target names across packages don't collide
 # add_executable(${PROJECT_NAME}_node src/tp_gmm_node.cpp)
+add_executable(gmm_rviz_converter_node scripts/gmm_rviz_converter.cpp)
 add_executable(gmm_moveit_node scripts/gmm_moveit_node.cpp)
 # add_executable(kr10_moveit_interface scripts/kr10_moveit_interface.cpp ~/itra_ws/src/gmm_gmr/src/gmr.cpp)
 
@@ -154,6 +156,7 @@ add_executable(gmm_moveit_node scripts/gmm_moveit_node.cpp)
 ## Add cmake target dependencies of the executable
 ## same as for the library above
 # add_dependencies(${PROJECT_NAME}_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(gmm_rviz_converter_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 add_dependencies(gmm_moveit_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 # add_dependencies(kr10_moveit_interface ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
 
@@ -161,6 +164,9 @@ add_dependencies(gmm_moveit_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EX
 # target_link_libraries(${PROJECT_NAME}_node
 #   ${catkin_LIBRARIES}
 # )
+target_link_libraries(gmm_rviz_converter_node
+  ${catkin_LIBRARIES}
+)
 target_link_libraries(gmm_moveit_node
   ${catkin_LIBRARIES}
 )

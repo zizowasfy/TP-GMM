@@ -2,14 +2,14 @@
 # ROS stuff
 import rospy
 from geometry_msgs.msg import Pose, PointStamped, PoseArray
-from gaussian_mixture_model.msg import GaussianMixture
+from tp_gmm.msg import GaussianMixture
 from tp_gmm.srv import *
 
 # System and directories stuff
 import sys
-sys.path.append("/home/zizo/itra_ws/src/tp_gmm/include") # This is important to add to make sure all modules in '/include' dir are accessible
-data_dir = "/home/zizo/itra_ws/src/tp_gmm/data/"
-scripts_dir = "/home/zizo/itra_ws/src/tp_gmm/scripts/"
+sys.path.append("/home/erl/Multicobot-UR10/src/tp_gmm/include") # This is important to add to make sure all modules in '/include' dir are accessible
+data_dir = "/home/erl/Multicobot-UR10/src/tp_gmm/data/"
+scripts_dir = "/home/erl/Multicobot-UR10/src/tp_gmm/scripts/"
 import nbformat
 from nbconvert.preprocessors import ExecutePreprocessor
 import pickle
@@ -86,12 +86,13 @@ class TPGMM:
             pickle.dump(demons_info1, fp)
             print("demons_info1: ", demons_info1)
 
-        # Running demons_to_samples.ipynb
-        with open(scripts_dir + "demons_to_samples.ipynb") as f:
-            nb_in = nbformat.read(f, as_version=4)
-        ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
-        nb_out = ep.preprocess(nb_in)
-        print("demons_to_samples finished running!")
+        # NOTE: Uncomment/Run this only when need to train with new data
+        # # Running demons_to_samples.ipynb
+        # with open(scripts_dir + "demons_to_samples.ipynb") as f:
+        #     nb_in = nbformat.read(f, as_version=4)
+        # ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
+        # nb_out = ep.preprocess(nb_in)
+        # print("demons_to_samples finished running!")
         self.demonsToSamples_flag = False
 
     ## Preparing the samples and fit ----------------------------------------------------------------------------------------- #
@@ -148,7 +149,7 @@ class TPGMM:
         rnew = self.TPGMMGMR.reproduce(newP, newb1[1:,:])
 
         # Saving GMM to rosbag ------------------------------------------------------------------------------------------------------------ #
-        gmm = self.TPGMMGMR.convertToGM(rnew)
+        gmm = self.TPGMMGMR.convertToGM(rnew, req.frame_id)
         
         self.tpgmm_pub.publish(gmm)
         print("GMM is Published!")

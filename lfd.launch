@@ -1,6 +1,6 @@
 <!-- <?xml version="1.0"?> -->
 <launch>
-    <arg name="task"/>
+    <arg name="task" default="Rbolts"/>
     <arg name="subtask" default="action"/>
 
     <param name="task_param" type="string" value="$(arg task)"/>
@@ -12,7 +12,8 @@
     <!-- GMM -->
     <!-- <node name="gaussian_mixture_model_trajectory_converter" pkg="gaussian_mixture_model" type="gaussian_mixture_model_trajectory_converter" output="screen"/> -->
     <!-- <node name="gaussian_mixture_model_node" pkg="gaussian_mixture_model" type="gaussian_mixture_model_node" output="screen"/> -->
-    <node name="gaussian_mixture_model_rviz_converter" pkg="gaussian_mixture_model" type="gaussian_mixture_model_rviz_converter" output="screen"/>
+    <node name="gmm_rviz_converter_node" pkg="tp_gmm" type="gmm_rviz_converter_node" output="screen"/>
+    <node name="gmm_moveit_node" pkg="tp_gmm" type="gmm_moveit_node" output="screen"/>    
     <!--/ GMM -->
 
     <!-- Execution -->

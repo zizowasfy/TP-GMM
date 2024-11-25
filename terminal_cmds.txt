@@ -9,3 +9,12 @@
 - roslaunch kr10_moveit_config moveit_planning_execution.launch itra:=true sim:=false (listens to joint_states from the real-robot coming from Cesar's cell not the simulator)
 - roslaunch kr10_moveit_config moveit_planning_execution.launch sim:=false robot_ip:=192.168.2.147 (for real robot)
 - roslaunch kuka_rsi_hw_interface test_hardware_interface.launch sim:=false (run the rsi interface to connect to the Real Kuka controller)
+
+#
+pip3 install -U scikit-learn
+
+# Run this launch file to start the necessary nodes for the TPGMM
+roslaunch tp_gmm lfd.launch
+
+# Run this command to call the service that trains and starts the TPGMM server
+rosservice call /StartTPGMM_service 

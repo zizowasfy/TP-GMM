@@ -4,7 +4,7 @@ import rosbag
 
 from std_msgs.msg import Float32
 from geometry_msgs.msg import PoseArray, Pose, PoseStamped, Quaternion
-from gaussian_mixture_model.msg import *
+from tp_gmm.msg import *
 from tp_gmm.srv import *
 
 import sys
