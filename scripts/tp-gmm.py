@@ -11,9 +11,9 @@ from trajectory_msgs.msg import JointTrajectoryPoint
 
 # System and directories stuff
 import sys
-sys.path.append("/home/zizo/haptics-ctrl_ws/src/tp_gmm/include")
-data_dir = "/home/zizo/haptics-ctrl_ws/src/tp_gmm/data/"
-scripts_dir = "/home/zizo/haptics-ctrl_ws/src/tp_gmm/scripts/"
+sys.path.append("/home/zizo/tpgmm_rrt_ws/src/batteryDis-LfD/tp_gmm/include")
+data_dir = "/home/zizo/tpgmm_rrt_ws/src/batteryDis-LfD/tp_gmm/data/"
+scripts_dir = "/home/zizo/tpgmm_rrt_ws/src/batteryDis-LfD/tp_gmm/scripts/"
 import nbformat
 from nbconvert.preprocessors import ExecutePreprocessor
 import pickle
@@ -47,6 +47,8 @@ class TPGMM:
         self.learned_traj_pub = rospy.Publisher('/gmm/learned_trajectory', PoseArray, queue_size=1)
         self.solveFK_pub = rospy.Publisher('/joint_samples', JointState, queue_size=1)
         self.tpgmm_time_pub = rospy.Publisher('/tpgmm/planning_time', Float32, queue_size=1)
+        self.Data_posearray_pub = rospy.Publisher('/gmm/traj_input', PoseArray, queue_size=1)
+
         self.demonsToSamples_flag = False   
         self.demonsToSamples()
 
@@ -79,7 +81,7 @@ class TPGMM:
         self.nbSamples = self.demons_info2['nbDemons']  # nb of demonstrations
         self.nbVar = 4      # Dim !!
         self.nbFrames = 2 
-        self.nbStates = 2  # nb of Gaussians
+        self.nbStates = 5  # nb of Gaussians
         self.nbData = self.demons_info2['ref_nbpoints']#-1
         self.down_sample_factor = self.demons_info2['down_sample_factor']
 
@@ -131,6 +133,11 @@ class TPGMM:
         # Learning the model-------------------------------------------------------------------------------------------------- #
         self.TPGMMGMR.fit(self.slist)
         
+        # # Model Selection (nb of Gaussians selection) based on BIC ----------------------------------------------------------- #
+        # Data_posearray, DataAll = self.TPGMMGMR.getDataAll(self.slist)
+        # Data_posearray.header.frame_id = "panda_link0"
+        # self.Data_posearray_pub.publish(Data_posearray)
+
         # self.tpGMMGMR()
     # @njit
     def tpGMMGMR(self, req):
@@ -195,12 +202,12 @@ class TPGMM:
             x_t.poses.append(deepcopy(pose))
             # Getting the Gaussians' means indeices in joint space
             for g in range(self.nbStates):
-                if (np.linalg.norm(np.array([rnew.Mu[1:,g,-1]]) - np.array([rnew.Data[1:,t]])) < 0.1):
+                if (np.linalg.norm(np.array([rnew.Mu[1:,g,-1]]) - np.array([rnew.Data[1:,t]])) < 0.05): #0.1
                     gauss_indx[g] = t
         # print("... x_t_time: ", time.time() - x_t_time)
         # print("gaus_indx (before): ", gauss_indx)
         gauss_indx = (gauss_indx/np.array(inc)).astype(int)                    
-        # print("gaus_indx: ", gauss_indx)
+        print("gaus_indx: ", gauss_indx)
         x_t.header.frame_id = "panda_link0"
         self.learned_traj_pub.publish(x_t)
         # print("x_t.poses: ", len(x_t.poses))
