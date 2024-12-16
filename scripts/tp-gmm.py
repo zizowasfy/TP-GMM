@@ -68,7 +68,7 @@ class TPGMM:
         self.nbVar = 4      # Dim !!
         self.nbFrames = 2 
         self.nbStates = 5  # nb of Gaussians
-        self.nbData = self.demons_info2['ref_nbpoints']-1
+        self.nbData = self.demons_info2['ref_nbpoints']#-1
 
         self.tpGMM()
         return StartTPGMMResponse(True)
@@ -87,12 +87,12 @@ class TPGMM:
             print("demons_info1: ", demons_info1)
 
         # NOTE: Uncomment/Run this only when need to train with new data
-        # # Running demons_to_samples.ipynb
-        # with open(scripts_dir + "demons_to_samples.ipynb") as f:
-        #     nb_in = nbformat.read(f, as_version=4)
-        # ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
-        # nb_out = ep.preprocess(nb_in)
-        # print("demons_to_samples finished running!")
+        # Running demons_to_samples.ipynb
+        with open(scripts_dir + "demons_to_samples_ur10_demons.ipynb") as f:
+            nb_in = nbformat.read(f, as_version=4)
+        ep = ExecutePreprocessor(timeout=600, kernel_name='python3')
+        nb_out = ep.preprocess(nb_in)
+        print("demons_to_samples finished running!")
         self.demonsToSamples_flag = False
 
     ## Preparing the samples and fit ----------------------------------------------------------------------------------------- #
@@ -154,15 +154,15 @@ class TPGMM:
         self.tpgmm_pub.publish(gmm)
         print("GMM is Published!")
 
-        regressed_trajectory = PoseArray() ; regressed_trajectory.header.frame_id = 'base_link'
+        regressed_trajectory = PoseArray() ; regressed_trajectory.header.frame_id = req.frame_id #'base_link'
         regressed_point = Pose()
-        for point in rnew.Data.T: # Looping over the points (colums of Data) in renew.Data
+        for i, point in enumerate(rnew.Data.T): # Looping over the points (colums of Data) in renew.Data
             regressed_point.position.x = point[1]
             regressed_point.position.y = point[2]
             regressed_point.position.z = point[3]
 
             regressed_trajectory.poses.append(deepcopy(regressed_point))
-
+        print("No. of points in Regressed Trajectory: ", i)
         self.regress_traj_pub.publish(regressed_trajectory)
         print("Regressed Trajectory is Published!")
 
